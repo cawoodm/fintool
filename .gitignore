@@ -1,0 +1,21 @@
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Personal financial data — never commit
+data/
+
+# Screenshots show derived figures
+screenshots/
+
+# Local dev artifacts
+server.log
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

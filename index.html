@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>FinTool — Personal Finance</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='system-ui' font-size='18' font-weight='700' fill='white'%3E%E2%82%A3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <h1>FinTool</h1>
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="income">Income</button>
+    <button class="tab" data-tab="categories">Categories</button>
+    <button class="tab" data-tab="payments">Payments</button>
+    <button class="tab" data-tab="chat">Chat</button>
+  </nav>
+  <div class="status" id="loadStatus">Loading…</div>
+</header>
+
+<main>
+  <section class="panel active" id="tab-overview">
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Latest bank balance</div><div class="kpi-value" id="kpi-balance">—</div></div>
+      <div class="kpi"><div class="kpi-label">Avg net income (12m)</div><div class="kpi-value" id="kpi-income">—</div></div>
+      <div class="kpi"><div class="kpi-label">Avg expenses (12m)</div><div class="kpi-value" id="kpi-expenses">—</div></div>
+      <div class="kpi"><div class="kpi-label">Savings rate (12m)</div><div class="kpi-value" id="kpi-savings">—</div></div>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-card"><h3>Bank balance over time</h3><canvas id="chart-balance"></canvas></div>
+      <div class="chart-card"><h3>Monthly net income vs expenses</h3><canvas id="chart-incexp"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel" id="tab-income">
+    <div class="toolbar"><input type="search" class="global-search" name="search-income" aria-label="Search income" placeholder="Search…" data-target="income" /><span class="badge" id="badge-income"></span></div>
+    <div class="table-wrap" id="table-income"></div>
+  </section>
+
+  <section class="panel" id="tab-categories">
+    <div class="toolbar">
+      <label>From <select id="cat-from"></select></label>
+      <label>To <select id="cat-to"></select></label>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-card"><h3>Expenses by category</h3><canvas id="chart-pie"></canvas></div>
+      <div class="chart-card"><h3>Category spend per month</h3><canvas id="chart-stack"></canvas></div>
+    </div>
+    <div class="toolbar"><input type="search" class="global-search" name="search-overview" aria-label="Search overview" placeholder="Search…" data-target="overview" /><span class="badge" id="badge-overview"></span></div>
+    <div class="table-wrap" id="table-overview"></div>
+  </section>
+
+  <section class="panel" id="tab-payments">
+    <div class="toolbar">
+      <input type="search" class="global-search" name="search-payments" aria-label="Search payments" placeholder="Search text/notes…" data-target="payments" />
+      <label>Source <select id="pay-source"><option value="">All</option></select></label>
+      <label>Category <select id="pay-category"><option value="">All</option></select></label>
+      <label>From <input type="date" id="pay-from" /></label>
+      <label>To <input type="date" id="pay-to" /></label>
+      <span class="badge" id="badge-payments"></span>
+      <span class="badge" id="badge-payments-sum"></span>
+    </div>
+    <div class="table-wrap" id="table-payments"></div>
+  </section>
+
+  <section class="panel" id="tab-chat">
+    <form class="chat-settings" id="chat-settings-form" autocomplete="off" onsubmit="return false">
+      <label>API key <input type="password" id="chat-key" name="anthropic-api-key" placeholder="sk-ant-…" autocomplete="off" /></label>
+      <label>Model
+        <select id="chat-model" name="model">
+          <option value="claude-haiku-4-5-20251001" selected>Haiku 4.5 (fast/cheap)</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+          <option value="claude-opus-4-7">Opus 4.7</option>
+        </select>
+      </label>
+      <button type="button" id="chat-save">Save</button>
+      <span class="muted" id="chat-key-state"></span>
+    </form>
+    <div class="chat-log" id="chat-log"></div>
+    <form class="chat-form" id="chat-form">
+      <textarea id="chat-input" placeholder="Ask about your finances… e.g. 'What was my biggest expense category in 2024?'" rows="3"></textarea>
+      <button type="submit">Send</button>
+    </form>
+    <p class="muted small">Key stored locally in your browser. Requests go directly from your browser to api.anthropic.com.</p>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
