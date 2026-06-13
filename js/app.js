@@ -2,6 +2,7 @@ import { loadIncome, loadOverview, loadPayments, formatChf } from './parsers.js'
 import { renderTable } from './tables.js';
 import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth } from './charts.js';
 import { initChat } from './chat.js';
+import { initImporter } from './importer.js';
 
 const state = { income: [], overview: [], payments: [], rendered: {}, tables: {} };
 
@@ -55,10 +56,28 @@ function renderIncomeTab() {
   });
 }
 
+function buildSubCategoryRows(payments) {
+  const map = new Map();
+  for (const p of payments) {
+    if (!p.subCategory) continue;
+    const month = (p.date || '').slice(0, 7);
+    if (!month) continue;
+    const key = `${month}|${p.category}|${p.subCategory}`;
+    const entry = map.get(key) || {
+      month, category: p.category, subCategory: p.subCategory,
+      expenses: 0, pct: null, income: null, reason: '(from payments)',
+    };
+    entry.expenses += (p.amount || 0);
+    map.set(key, entry);
+  }
+  return [...map.values()].map(r => ({ ...r, expenses: Math.abs(r.expenses) }));
+}
+
 function renderCategoriesTab() {
   const months = [...new Set(state.overview.map(r => r.month))].sort();
   const from = document.getElementById('cat-from');
   const to = document.getElementById('cat-to');
+  const subSel = document.getElementById('cat-subcategory');
   from.innerHTML = '';
   to.innerHTML = '';
   months.forEach(m => {
@@ -78,17 +97,39 @@ function renderCategoriesTab() {
   to.addEventListener('change', drawCharts);
   drawCharts();
 
+  const subRows = buildSubCategoryRows(state.payments);
+  const combinedRows = [
+    ...state.overview.map(r => ({ ...r, subCategory: '' })),
+    ...subRows,
+  ].sort((a, b) =>
+    (a.category || '').localeCompare(b.category || '') ||
+    (a.subCategory || '').localeCompare(b.subCategory || '')
+  );
+
+  const subs = [...new Set(subRows.map(r => r.subCategory))].sort();
+  subs.forEach(s => subSel.appendChild(new Option(s, s)));
+
   const columns = [
     { key: 'month', label: 'Month', type: 'string' },
     { key: 'category', label: 'Category', type: 'string' },
+    { key: 'subCategory', label: 'SubCategory', type: 'string' },
     { key: 'expenses', label: 'Expenses', type: 'number', decimals: 0 },
     { key: 'pct', label: '%', type: 'number', decimals: 0, format: v => v === null ? '' : `${v}%` },
     { key: 'income', label: 'Income', type: 'number', decimals: 0 },
     { key: 'reason', label: 'Diff/Reason', type: 'string' },
   ];
   const badge = document.getElementById('badge-overview');
-  state.tables.overview = renderTable(document.getElementById('table-overview'), state.overview, columns, {
-    onUpdate: visible => { badge.textContent = `${visible.length} / ${state.overview.length} rows`; },
+  state.tables.overview = renderTable(document.getElementById('table-overview'), combinedRows, columns, {
+    sortKey: 'month',
+    sortDir: 'desc',
+    onUpdate: visible => { badge.textContent = `${visible.length} / ${combinedRows.length} rows`; },
+  });
+
+  console.log(`[categories] overview=${state.overview.length} subRows=${subRows.length} combined=${combinedRows.length}`);
+
+  subSel.addEventListener('change', () => {
+    const v = subSel.value;
+    state.tables.overview.setExtraFilter(v ? r => r.subCategory === v : null);
   });
 }
 
@@ -108,10 +149,22 @@ function renderPaymentsTab() {
 
   const srcSel = document.getElementById('pay-source');
   const catSel = document.getElementById('pay-category');
+  const subSel = document.getElementById('pay-subcategory');
   const sources = [...new Set(state.payments.map(p => p.source).filter(Boolean))].sort();
   const cats = [...new Set(state.payments.map(p => p.category))].sort();
   sources.forEach(s => srcSel.appendChild(new Option(s, s)));
   cats.forEach(c => catSel.appendChild(new Option(c, c)));
+
+  const populateSubcategories = () => {
+    const cat = catSel.value;
+    const pool = cat ? state.payments.filter(p => p.category === cat) : state.payments;
+    const subs = [...new Set(pool.map(p => p.subCategory).filter(Boolean))].sort();
+    const current = subSel.value;
+    subSel.innerHTML = '<option value="">All</option>';
+    subs.forEach(s => subSel.appendChild(new Option(s, s)));
+    if (subs.includes(current)) subSel.value = current;
+  };
+  populateSubcategories();
 
   const fromDate = document.getElementById('pay-from');
   const toDate = document.getElementById('pay-to');
@@ -119,12 +172,14 @@ function renderPaymentsTab() {
   const buildFilter = () => {
     const src = srcSel.value;
     const cat = catSel.value;
+    const sub = subSel.value;
     const fd = fromDate.value;
     const td = toDate.value;
-    if (!src && !cat && !fd && !td) return null;
+    if (!src && !cat && !sub && !fd && !td) return null;
     return r => {
       if (src && r.source !== src) return false;
       if (cat && r.category !== cat) return false;
+      if (sub && r.subCategory !== sub) return false;
       if (fd && r.date < fd) return false;
       if (td && r.date > td) return false;
       return true;
@@ -141,7 +196,8 @@ function renderPaymentsTab() {
     },
   });
 
-  [srcSel, catSel, fromDate, toDate].forEach(el =>
+  catSel.addEventListener('change', populateSubcategories);
+  [srcSel, catSel, subSel, fromDate, toDate].forEach(el =>
     el.addEventListener('change', () => state.tables.payments.setExtraFilter(buildFilter()))
   );
 }
@@ -166,7 +222,7 @@ function wireTabs() {
   });
 }
 
-async function main() {
+async function main(openImport) {
   setStatus('Loading CSVs…');
   try {
     const [income, overview, payments] = await Promise.all([loadIncome(), loadOverview(), loadPayments()]);
@@ -181,9 +237,13 @@ async function main() {
     console.assert(overview.length > 400, 'overview rows look low');
     console.assert(payments.length > 3000, 'payments rows look low');
   } catch (e) {
-    setStatus(`Error: ${e.message}`);
+    setStatus('No data found — use Import to load your CSV files');
     console.error(e);
+    if (openImport) openImport();
   }
 }
 
-document.addEventListener('DOMContentLoaded', main);
+document.addEventListener('DOMContentLoaded', async () => {
+  const { open } = initImporter(() => location.reload());
+  await main(open);
+});

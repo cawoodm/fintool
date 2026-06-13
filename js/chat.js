@@ -1,7 +1,23 @@
-import { formatChf } from './parsers.js';
-
 const KEY_STORAGE = 'fintool_anthropic_key';
 const MODEL_STORAGE = 'fintool_anthropic_model';
+const HISTORY_STORAGE = 'fintool_chat_history';
+const HISTORY_CAP = 50;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_STORAGE) || '[]'); }
+  catch { return []; }
+}
+function saveHistory(h) { localStorage.setItem(HISTORY_STORAGE, JSON.stringify(h.slice(0, HISTORY_CAP))); }
+
+function renderHistory(sel, history) {
+  const current = sel.value;
+  sel.innerHTML = '<option value="">↻ Reuse a recent prompt…</option>';
+  history.forEach((q, i) => {
+    const label = q.length > 80 ? q.slice(0, 77) + '…' : q;
+    sel.appendChild(new Option(label, String(i)));
+  });
+  sel.value = current;
+}
 
 export function initChat(data) {
   const keyInput = document.getElementById('chat-key');
@@ -11,17 +27,47 @@ export function initChat(data) {
   const form = document.getElementById('chat-form');
   const input = document.getElementById('chat-input');
   const log = document.getElementById('chat-log');
+  const historySel = document.getElementById('chat-history');
+  const historyClearBtn = document.getElementById('chat-history-clear');
 
   const storedKey = localStorage.getItem(KEY_STORAGE) || '';
   const storedModel = localStorage.getItem(MODEL_STORAGE);
   if (storedKey) { keyInput.value = storedKey; stateEl.textContent = '✓ key saved locally'; }
   if (storedModel) modelSelect.value = storedModel;
 
-  saveBtn.addEventListener('click', () => {
+  let history = loadHistory();
+  renderHistory(historySel, history);
+
+  const persistKey = () => {
     const k = keyInput.value.trim();
     if (k) localStorage.setItem(KEY_STORAGE, k); else localStorage.removeItem(KEY_STORAGE);
-    localStorage.setItem(MODEL_STORAGE, modelSelect.value);
     stateEl.textContent = k ? '✓ key saved locally' : 'key cleared';
+  };
+
+  saveBtn.addEventListener('click', persistKey);
+  keyInput.addEventListener('blur', persistKey);
+  modelSelect.addEventListener('change', () => localStorage.setItem(MODEL_STORAGE, modelSelect.value));
+
+  historySel.addEventListener('change', () => {
+    const i = Number(historySel.value);
+    if (Number.isFinite(i) && history[i] !== undefined) {
+      input.value = history[i];
+      input.focus();
+    }
+    historySel.value = '';
+  });
+  historyClearBtn.addEventListener('click', () => {
+    if (!confirm('Clear all stored chat prompts?')) return;
+    history = [];
+    saveHistory(history);
+    renderHistory(historySel, history);
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
   });
 
   form.addEventListener('submit', async e => {
@@ -32,6 +78,10 @@ export function initChat(data) {
     if (!key) { appendTurn(log, 'error', 'Set an Anthropic API key first.'); return; }
     appendTurn(log, 'user', question);
     input.value = '';
+
+    history = [question, ...history.filter(q => q !== question)].slice(0, HISTORY_CAP);
+    saveHistory(history);
+    renderHistory(historySel, history);
 
     const context = buildContext(data);
     const pending = appendTurn(log, 'assistant', '…thinking');
@@ -47,8 +97,8 @@ export function initChat(data) {
         },
         body: JSON.stringify({
           model: modelSelect.value,
-          max_tokens: 1024,
-          system: `You are a personal finance analyst. The user has 3 datasets (income, overview, payments) in CHF, summarized below. Answer concisely; cite numbers from the data. If a question can't be answered from the provided context, say so.\n\n${context}`,
+          max_tokens: 4096,
+          system: `You are a personal finance analyst. The user has 3 complete datasets (income, overview, payments) in CHF. Answer concisely; cite numbers from the data. If a question can't be answered from the provided context, say so.\n\n${context}`,
           messages: [{ role: 'user', content: question }],
         }),
       });
@@ -67,11 +117,24 @@ export function initChat(data) {
   });
 }
 
+const MARKDOWN_HINT = /(^|\n)(#{1,6} |[-*] |\d+\. |> |```|\|.*\|)|(\*\*[^*]+\*\*)|(`[^`]+`)|(\[[^\]]+\]\([^)]+\))/;
+
+function renderContent(el, role, text) {
+  if (role === 'assistant' && typeof marked !== 'undefined' && MARKDOWN_HINT.test(text)) {
+    el.classList.add('markdown');
+    el.innerHTML = marked.parse(text, { breaks: true, gfm: true });
+  } else {
+    el.classList.remove('markdown');
+    el.textContent = text;
+  }
+}
+
 function appendTurn(log, role, content, meta = '') {
   const turn = document.createElement('div');
   turn.className = `chat-turn ${role}`;
   const rEl = document.createElement('div'); rEl.className = 'role'; rEl.textContent = role;
-  const cEl = document.createElement('div'); cEl.className = 'content'; cEl.textContent = content;
+  const cEl = document.createElement('div'); cEl.className = 'content';
+  renderContent(cEl, role, content);
   const mEl = document.createElement('div'); mEl.className = 'meta'; mEl.textContent = meta;
   turn.append(rEl, cEl, mEl);
   log.appendChild(turn);
@@ -80,7 +143,7 @@ function appendTurn(log, role, content, meta = '') {
     update(newRole, newContent, newMeta = '') {
       turn.className = `chat-turn ${newRole}`;
       rEl.textContent = newRole;
-      cEl.textContent = newContent;
+      renderContent(cEl, newRole, newContent);
       mEl.textContent = newMeta;
       log.scrollTop = log.scrollHeight;
     },
@@ -88,47 +151,44 @@ function appendTurn(log, role, content, meta = '') {
 }
 
 function buildContext({ income, overview, payments }) {
-  const monthly = income.filter(r => r.isMonthly && r.month).sort((a, b) => a.month.localeCompare(b.month));
-  const recent = monthly.slice(-24);
-  const recentTbl = recent.map(r =>
-    `${r.month} | net=${fmt(r.netIncome)} | exp=${fmt(r.expenses)} | bal=${fmt(r.bankBalance)} | p/l=${fmt(r.profitLoss)}`
-  ).join('\n');
+  const incomeRows = income
+    .filter(r => r.isMonthly && r.month)
+    .sort((a, b) => a.month.localeCompare(b.month));
 
-  const catTotals = new Map();
-  const last12 = monthly.slice(-12).map(r => r.month);
-  for (const r of overview) {
-    if (r.category === 'Total' || !last12.includes(r.month)) continue;
-    catTotals.set(r.category, (catTotals.get(r.category) || 0) + (r.expenses || 0));
-  }
-  const catLines = [...catTotals.entries()].sort((a, b) => b[1] - a[1])
-    .map(([cat, total]) => `${cat}: ${fmt(total)}`).join('\n');
+  const incomeTbl = tbl(incomeRows, [
+    'month', 'pensum', 'wage', 'kindergeld', 'socInsurance', 'gross', 'socPct',
+    'other', 'netIncome', 'bankBalance', 'expenses', 'profitLoss', 'balanceDiff',
+  ]);
 
-  const paymentCatCounts = new Map();
-  for (const p of payments) paymentCatCounts.set(p.category, (paymentCatCounts.get(p.category) || 0) + 1);
-  const catCountLines = [...paymentCatCounts.entries()].sort((a, b) => b[1] - a[1])
-    .map(([c, n]) => `${c}: ${n}`).join(', ');
+  const overviewTbl = tbl(overview, ['month', 'category', 'expenses', 'pct', 'income', 'reason']);
 
-  const totalPayments = payments.length;
-  const dateRange = payments.length ? `${payments[0].date} … ${payments[payments.length - 1].date}` : 'n/a';
+  const paymentsTbl = tbl(payments, [
+    'date', 'text', 'amount', 'category', 'subCategory', 'notes', 'balance', 'source', 'period',
+  ]);
 
   return [
-    '# Data summary',
-    `Income rows: ${income.length} | Overview rows: ${overview.length} | Payments: ${totalPayments} (${dateRange})`,
+    '# Financial data (all amounts CHF, months YYYY-MM, negative profit/loss = expenses > income)',
     '',
-    '## Last 24 months (income.csv)',
-    recentTbl,
+    `## income.csv (${incomeRows.length} monthly rows)`,
+    incomeTbl,
     '',
-    '## Expenses by category — last 12 months (overview.csv)',
-    catLines,
+    `## overview.csv (${overview.length} rows)`,
+    overviewTbl,
     '',
-    '## Payment count by category',
-    catCountLines,
-    '',
-    'NOTE: All amounts are in CHF. Months are YYYY-MM. Negative profit/loss means expenses exceeded income that month.',
+    `## payments.csv (${payments.length} rows)`,
+    paymentsTbl,
   ].join('\n');
 }
 
-function fmt(n) {
-  if (n === null || n === undefined) return '—';
-  return formatChf(n, { decimals: 0 });
+function tbl(rows, cols) {
+  if (!rows.length) return '(no data)';
+  const header = cols.join('\t');
+  const lines = rows.map(r =>
+    cols.map(c => {
+      const v = r[c];
+      return (v === null || v === undefined) ? '' : String(v);
+    }).join('\t')
+  );
+  return [header, ...lines].join('\n');
 }
+

@@ -35,6 +35,10 @@ export function parseMonthLabel(value) {
 }
 
 async function fetchCsv(path) {
+  // e.g. 'data/income.csv' → localStorage key 'fintool_csv_income'
+  const lsKey = 'fintool_csv_' + path.replace(/^data\//, '').replace('.csv', '');
+  const stored = localStorage.getItem(lsKey);
+  if (stored) return stored;
   const res = await fetch(path);
   if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`);
   return res.text();
