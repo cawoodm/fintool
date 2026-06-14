@@ -1,6 +1,8 @@
 # FinTool
 
-A single-page personal finance dashboard for your own CSV exports — three tabs of charts and sortable tables, plus a Claude-powered chat that answers questions about your data. No backend, no telemetry, no framework. Your data stays in the browser.
+A personal finance overview with AI chat.
+
+You can host the site yourself or try it out at: https://cawoodm.github.io/fintool
 
 ![Overview tab](docs/screenshots/overview.png)
 
@@ -9,10 +11,10 @@ A single-page personal finance dashboard for your own CSV exports — three tabs
 ## Highlights
 
 - **Drop in your CSVs and go.** Three files — `income.csv`, `overview.csv`, `payments.csv` — with the headers you'd already export from a spreadsheet. Drag them into the importer or place them in the `data/` folder.
-- **Four lenses on the same data.** Overview KPIs and balance trend, Categories with pie + stacked bar, Payments as a fully-filterable table, and a Chat tab that talks to your data.
-- **Global Date Range.** Filter every tab and every chat send to *Last 6 / 12 / 24 months* or *All time* with one dropdown in the top bar.
+- **Four views on the same data.** Overview KPIs and balance trend, Categories with pie + stacked bar, Payments as a fully-filterable table, and a Chat tab that talks to your data.
+- **Global Date Range.** Filter every tab and every chat send to _Last 6 / 12 / 24 months_ or _All time_ with one dropdown in the top bar.
 - **Talk to your data.** The Chat tab calls Claude directly from the browser. Multi-turn conversations persist across reloads. Aggregated payment data and prompt caching keep follow-up turns under common rate limits.
-- **Cost preview.** Live token + price estimate as you type — shows both the *first send* (cache write) and *cached follow-up* numbers so you know what each request costs before you press send.
+- **Cost preview.** Live token + price estimate as you type — shows both the _first send_ (cache write) and _cached follow-up_ numbers so you know what each request costs before you press send.
 - **Zero infrastructure.** Static Vite build. Open `npm run dev` and use it locally, or `npm run build` for a static host.
 
 ---
@@ -20,7 +22,7 @@ A single-page personal finance dashboard for your own CSV exports — three tabs
 ## Quick start
 
 ```sh
-git clone <this repo>
+git clone https://github.com/cawoodm/fintool
 cd fintool
 npm install
 npm run dev          # http://localhost:5173
@@ -28,12 +30,11 @@ npm run dev          # http://localhost:5173
 
 The app starts empty. Two ways to load data:
 
-1. **Try the example data** — drop the three files in `examples/` into the importer, or:
-   ```sh
-   cp examples/*.csv data/
-   ```
-   then reload.
-2. **Use your own** — same filenames in `data/` (gitignored). See [Data format](#data-format) below.
+1. **Try the example data** — Download the 3 [example .csv](https://github.com/cawoodm/fintool/tree/main/exampledata) files and drag them into the app.
+
+2. Generate your own data in the correct format. See [Data format](#data-format) below.
+
+You don't need all 3 files and can begin chatting and viewing with only one file.
 
 For the Chat tab, paste an Anthropic API key in the settings row. The key is stored in your browser only (`localStorage` under the `/fintool/` namespace) and used for direct browser-to-Anthropic requests via the `anthropic-dangerous-direct-browser-access` header.
 
@@ -72,25 +73,31 @@ Under the hood:
 The app expects three CSVs. Column names are matched exactly (extras allowed — they're ignored).
 
 ### `income.csv`
+
 ```
 Month,Pensum,Wage,Net Income,Bank Balance,Expenses,Profit/loss,Balance Diff
 01.01.2026,0.8,8000.00,6512.32,17563.38,6448.94,63.38,63.38
 ```
+
 One row per month. `Month` is `DD.MM.YYYY` (Swiss/European format) — the day part is decorative; the row represents a month.
 
 ### `overview.csv`
+
 ```
 Month,Category,Expenses,%,Income,Diff/Reason
 2026-01,Total,4011.22,1,6512.32,2501.10
 2026-01,Flat,2002.74,0.499285,,
 ```
+
 Long format: one row per `(Month, Category)`. `Total` rows carry income and diff. `Month` here uses ISO `YYYY-MM`.
 
 ### `payments.csv`
+
 ```
 Source,Date,Text,Amount,Category,SubCategory,Notes,Balance,Actual
 SGKB,01.01.2026,Hausverwaltung Müller — Miete,1850.00,Flat,Rent,,,
 ```
+
 One row per transaction. `Date` is `DD.MM.YYYY`. `Amount` is positive (direction is implied by category).
 
 Currency parsing is lenient — `CHF`, commas, and whitespace are stripped.
@@ -114,14 +121,14 @@ js/
 
 All persistent state lives under a single namespace:
 
-| Key | Stores |
-|---|---|
-| `/fintool/anthropic_key` | Claude API key |
-| `/fintool/anthropic_model` | Last-used model |
-| `/fintool/chat_messages` | Persisted conversation |
-| `/fintool/chat_history` | Recent prompts dropdown |
-| `/fintool/active_tab` | Last-active tab on reload |
-| `/fintool/income.csv` / `overview.csv` / `payments.csv` | Imported CSV text |
+| Key                                                     | Stores                    |
+| ------------------------------------------------------- | ------------------------- |
+| `/fintool/anthropic_key`                                | Claude API key            |
+| `/fintool/anthropic_model`                              | Last-used model           |
+| `/fintool/chat_messages`                                | Persisted conversation    |
+| `/fintool/chat_history`                                 | Recent prompts dropdown   |
+| `/fintool/active_tab`                                   | Last-active tab on reload |
+| `/fintool/income.csv` / `overview.csv` / `payments.csv` | Imported CSV text         |
 
 ---
 
