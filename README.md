@@ -1,38 +1,144 @@
 # FinTool
 
-A local web UI for exploring personal finances captured in three CSVs (income, monthly category overview, individual payments). Sortable/filterable tables, pie/bar/line charts, and a chat panel that asks Anthropic Claude questions about your data.
+A single-page personal finance dashboard for your own CSV exports — three tabs of charts and sortable tables, plus a Claude-powered chat that answers questions about your data. No backend, no telemetry, no framework. Your data stays in the browser.
 
-## Run
+![Overview tab](docs/screenshots/overview.png)
+
+---
+
+## Highlights
+
+- **Drop in your CSVs and go.** Three files — `income.csv`, `overview.csv`, `payments.csv` — with the headers you'd already export from a spreadsheet. Drag them into the importer or place them in the `data/` folder.
+- **Four lenses on the same data.** Overview KPIs and balance trend, Categories with pie + stacked bar, Payments as a fully-filterable table, and a Chat tab that talks to your data.
+- **Global Date Range.** Filter every tab and every chat send to *Last 6 / 12 / 24 months* or *All time* with one dropdown in the top bar.
+- **Talk to your data.** The Chat tab calls Claude directly from the browser. Multi-turn conversations persist across reloads. Aggregated payment data and prompt caching keep follow-up turns under common rate limits.
+- **Cost preview.** Live token + price estimate as you type — shows both the *first send* (cache write) and *cached follow-up* numbers so you know what each request costs before you press send.
+- **Zero infrastructure.** Static Vite build. Open `npm run dev` and use it locally, or `npm run build` for a static host.
+
+---
+
+## Quick start
 
 ```sh
+git clone <this repo>
+cd fintool
 npm install
-npm run dev
+npm run dev          # http://localhost:5173
 ```
 
-Open <http://localhost:5173/>.
+The app starts empty. Two ways to load data:
 
-The app is static — `vite build` produces a `dist/` you can host anywhere, but the dev server is enough for local use.
+1. **Try the example data** — drop the three files in `examples/` into the importer, or:
+   ```sh
+   cp examples/*.csv data/
+   ```
+   then reload.
+2. **Use your own** — same filenames in `data/` (gitignored). See [Data format](#data-format) below.
 
-## Data
+For the Chat tab, paste an Anthropic API key in the settings row. The key is stored in your browser only (`localStorage` under the `/fintool/` namespace) and used for direct browser-to-Anthropic requests via the `anthropic-dangerous-direct-browser-access` header.
 
-The `data/` directory is **gitignored**. Drop your own CSVs there before running:
+---
 
-- `data/income.csv` — `Month,Pensum,Wage,Kindergeld,SocInsurance,Gross,Soc%,Other,Net Income,Bank Balance,Expenses,Profit/loss,Balance Diff` (one row per month or special line; `Month` is e.g. `January 2024` or `YYYY-MM`).
-- `data/overview.csv` — `Month,Category,Expenses,%,Income,Diff/Reason` (long format, `Month` is `YYYY-MM`; `Total` rows carry `Income` and `Diff/Reason`).
-- `data/payments.csv` — `Source,Year,Period,Date,Text,Amount,Category,SubCategory,Notes,Balance,Actual,Export` (one row per transaction; amounts like `1,234.56 CHF`).
+## Tour
 
-Currency formats are flexible: `1,234.56 CHF`, `1234.56`, `-1234CHF`, or plain numbers all parse.
+### Categories
 
-## Chat
+Pie + stacked bar of expenses broken down by category, plus a sortable table that combines the overview rows with subcategory totals derived from your payments.
 
-In the **Chat** tab, paste an Anthropic API key (kept in your browser's `localStorage`) and pick a model. Requests go straight from the browser to `api.anthropic.com` with `anthropic-dangerous-direct-browser-access: true`; nothing transits any third-party server.
+![Categories tab](docs/screenshots/categories.png)
 
-The app sends Claude a compact summary of your data each turn: last 24 months of income, category totals for the last 12 months, and payment-category counts. The raw CSVs stay in the browser.
+### Payments
 
-## Stack
+Every transaction, filterable by source, category, subcategory, date range, and full-text search. Column-level filters support `>100`, `<50`, `=0` for numeric columns. Sum updates live with the filter.
 
-- Vanilla JS, ES modules
-- [PapaParse](https://www.papaparse.com/) for CSV
-- [Chart.js](https://www.chartjs.org/) for charts
-- [Vite](https://vitejs.dev/) for the dev server
-- No build step needed in dev; no backend
+![Payments tab](docs/screenshots/payments.png)
+
+### Chat
+
+Pick which datasets the model sees (Payments / Overview / Income), watch the live token estimate update as you type, send. Conversations persist across reloads. Changing the Date Range or dataset selection drops an inline notice in the log instead of wiping history.
+
+![Chat tab](docs/screenshots/chat.png)
+
+Under the hood:
+
+- **Payments are sent as a monthly aggregate** grouped by `(Month, Source, Category, SubCategory)` with summed amount and transaction count. Cuts the chat payload by ~78% vs raw transactions.
+- **Cache breakpoint on the data block** so follow-up turns within five minutes cost ~10% on the cached portion (still counts toward TPM — that's why aggregation matters).
+- **Live `count_tokens` preview** for the would-be next send, with per-model pricing baked in.
+
+---
+
+## Data format
+
+The app expects three CSVs. Column names are matched exactly (extras allowed — they're ignored).
+
+### `income.csv`
+```
+Month,Pensum,Wage,Net Income,Bank Balance,Expenses,Profit/loss,Balance Diff
+01.01.2026,0.8,8000.00,6512.32,17563.38,6448.94,63.38,63.38
+```
+One row per month. `Month` is `DD.MM.YYYY` (Swiss/European format) — the day part is decorative; the row represents a month.
+
+### `overview.csv`
+```
+Month,Category,Expenses,%,Income,Diff/Reason
+2026-01,Total,4011.22,1,6512.32,2501.10
+2026-01,Flat,2002.74,0.499285,,
+```
+Long format: one row per `(Month, Category)`. `Total` rows carry income and diff. `Month` here uses ISO `YYYY-MM`.
+
+### `payments.csv`
+```
+Source,Date,Text,Amount,Category,SubCategory,Notes,Balance,Actual
+SGKB,01.01.2026,Hausverwaltung Müller — Miete,1850.00,Flat,Rent,,,
+```
+One row per transaction. `Date` is `DD.MM.YYYY`. `Amount` is positive (direction is implied by category).
+
+Currency parsing is lenient — `CHF`, commas, and whitespace are stripped.
+
+---
+
+## Architecture
+
+Vanilla JS ES modules served by Vite. PapaParse and Chart.js are loaded from CDN. No framework, no build step beyond what Vite provides for hot reload.
+
+```
+js/
+├── app.js        entry point; owns the global state object, wires tabs and the Date Range filter
+├── parsers.js    CSV loaders (loadIncome/Overview/Payments), date helpers, formatChf
+├── tables.js     generic renderTable() factory — sort, search, column filters, 2000-row cap
+├── charts.js     thin Chart.js wrappers; mount() destroys before re-create
+├── chat.js       browser → Anthropic; multi-turn messages[], cache_control, count_tokens preview
+├── importer.js   modal + drag-and-drop CSV importer; header validation per type
+└── storage.js    localStorage wrapper, every key prefixed with /fintool/
+```
+
+All persistent state lives under a single namespace:
+
+| Key | Stores |
+|---|---|
+| `/fintool/anthropic_key` | Claude API key |
+| `/fintool/anthropic_model` | Last-used model |
+| `/fintool/chat_messages` | Persisted conversation |
+| `/fintool/chat_history` | Recent prompts dropdown |
+| `/fintool/active_tab` | Last-active tab on reload |
+| `/fintool/income.csv` / `overview.csv` / `payments.csv` | Imported CSV text |
+
+---
+
+## Scripts
+
+```sh
+npm run dev       # Vite dev server on http://localhost:5173
+npm run build     # Static dist/
+npm run preview   # Serve dist/ locally
+
+node examples/generate.mjs   # regenerate the 6-month example CSVs
+```
+
+No tests, no linter — this is a local tool. The `console.assert` calls in `app.js:main` warn if row counts look unexpectedly low.
+
+---
+
+## Privacy
+
+Everything that isn't a CSS or JS asset is local-first. CSVs live in `localStorage` (under `/fintool/`); the chat sends your data directly from the browser to `api.anthropic.com` with your API key. There is no fintool server.

@@ -20,6 +20,14 @@
     <button class="tab" data-tab="payments">Payments</button>
     <button class="tab" data-tab="chat">Chat</button>
   </nav>
+  <label class="date-range-wrap">Range
+    <select id="date-range" class="date-range">
+      <option value="last12mo" selected>Last 12 months</option>
+      <option value="last6mo">Last 6 months</option>
+      <option value="last24mo">Last 24 months</option>
+      <option value="all">All time</option>
+    </select>
+  </label>
   <button class="import-btn" id="btn-import">Import</button>
   <div class="status" id="loadStatus">Loading…</div>
 </header>
@@ -85,16 +93,24 @@
       <span class="muted" id="chat-key-state"></span>
     </form>
     <div class="chat-log" id="chat-log"></div>
+    <div class="chat-datasets">
+      <span class="muted small">Datasets:</span>
+      <label><input type="checkbox" id="ds-payments" checked /> Payments</label>
+      <label><input type="checkbox" id="ds-overview" /> Overview</label>
+      <label><input type="checkbox" id="ds-income" /> Income</label>
+      <button type="button" id="chat-clear-conversation" class="btn-ghost-small" title="Clear the current conversation (keeps your saved API key and the uploaded payments file)">Clear chat</button>
+    </div>
     <div class="chat-history-bar">
       <select id="chat-history" aria-label="Recent prompts">
         <option value="">↻ Reuse a recent prompt…</option>
       </select>
-      <button type="button" id="chat-history-clear" class="btn-ghost-small">Clear history</button>
+      <button type="button" id="chat-history-clear" class="btn-ghost-small">Clear prompts</button>
     </div>
     <form class="chat-form" id="chat-form">
       <textarea id="chat-input" placeholder="Ask about your finances… e.g. 'What was my biggest expense category in 2024?' (Ctrl+Enter to send)" rows="3"></textarea>
       <button type="submit">Send</button>
     </form>
+    <div class="cost-preview muted small" id="cost-preview">Type a question to see estimated token cost.</div>
     <p class="muted small">Key stored locally in your browser. Requests go directly from your browser to api.anthropic.com.</p>
   </section>
 </main>

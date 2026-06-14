@@ -1,10 +1,26 @@
-import { loadIncome, loadOverview, loadPayments, formatChf } from './parsers.js';
+import { loadIncome, loadOverview, loadPayments, formatChf, filterByDateString, filterByMonthIso } from './parsers.js';
 import { renderTable } from './tables.js';
 import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth } from './charts.js';
-import { initChat } from './chat.js';
+import { initChat, noteContextChange, recomputeCostPreview } from './chat.js';
 import { initImporter } from './importer.js';
+import { getItem, setItem } from './storage.js';
 
-const state = { income: [], overview: [], payments: [], rendered: {}, tables: {} };
+function computeDateRange(preset) {
+  if (preset === 'all') return { preset, start: '0000-01-01', end: '9999-12-31' };
+  const today = new Date();
+  const end = today.toISOString().slice(0, 10);
+  const start = new Date(today);
+  const months = preset === 'last6mo' ? 6 : preset === 'last24mo' ? 24 : 12;
+  start.setMonth(start.getMonth() - months);
+  return { preset, start: start.toISOString().slice(0, 10), end };
+}
+
+const state = {
+  income: [], overview: [], payments: [],
+  rendered: {}, tables: {},
+  dateRange: computeDateRange('last12mo'),
+  chatDatasets: { payments: true, overview: false, income: false },
+};
 
 function setStatus(text) { document.getElementById('loadStatus').textContent = text; }
 
@@ -18,15 +34,17 @@ function activateTab(name) {
 }
 
 function renderOverview() {
-  lineBankBalance(state.income);
-  barIncomeVsExpenses(state.income);
-  const monthly = state.income.filter(r => r.isMonthly && r.bankBalance !== null).sort((a, b) => a.month.localeCompare(b.month));
+  const dr = state.dateRange;
+  const incomeFiltered = filterByMonthIso(state.income, dr);
+  lineBankBalance(incomeFiltered);
+  barIncomeVsExpenses(incomeFiltered);
+  const monthly = incomeFiltered.filter(r => r.bankBalance !== null).sort((a, b) => a.month.localeCompare(b.month));
   const last = monthly[monthly.length - 1];
   document.getElementById('kpi-balance').textContent = last ? formatChf(last.bankBalance, { decimals: 0 }) : '—';
-  const last12 = state.income.filter(r => r.isMonthly).sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
+  const monthsForAvg = [...incomeFiltered].sort((a, b) => a.month.localeCompare(b.month));
   const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-  const netVals = last12.map(r => r.netIncome).filter(v => v !== null);
-  const expVals = last12.map(r => r.expenses).filter(v => v !== null);
+  const netVals = monthsForAvg.map(r => r.netIncome).filter(v => v !== null);
+  const expVals = monthsForAvg.map(r => r.expenses).filter(v => v !== null);
   const avgNet = avg(netVals);
   const avgExp = avg(expVals);
   document.getElementById('kpi-income').textContent = formatChf(avgNet, { decimals: 0 });
@@ -37,21 +55,17 @@ function renderOverview() {
 
 function renderIncomeTab() {
   const columns = [
-    { key: 'monthLabel', label: 'Month', type: 'string' },
+    { key: 'month', label: 'Month', type: 'string' },
     { key: 'pensum', label: 'Pensum', type: 'string' },
     { key: 'wage', label: 'Wage', type: 'number', decimals: 2 },
-    { key: 'kindergeld', label: 'Kindergeld', type: 'number', decimals: 2 },
-    { key: 'socInsurance', label: 'SocIns', type: 'number', decimals: 2 },
-    { key: 'gross', label: 'Gross', type: 'number', decimals: 2 },
-    { key: 'socPct', label: 'Soc%', type: 'number', decimals: 0, format: v => v === null ? '' : `${v}%` },
-    { key: 'other', label: 'Other', type: 'number', decimals: 2 },
     { key: 'netIncome', label: 'Net Income', type: 'number', decimals: 2 },
     { key: 'bankBalance', label: 'Bank Balance', type: 'number', decimals: 2 },
     { key: 'expenses', label: 'Expenses', type: 'number', decimals: 2 },
     { key: 'profitLoss', label: 'P/L', type: 'number', decimals: 0, colorPositive: true },
   ];
+  const filtered = filterByMonthIso(state.income, state.dateRange);
   const badge = document.getElementById('badge-income');
-  state.tables.income = renderTable(document.getElementById('table-income'), state.income, columns, {
+  state.tables.income = renderTable(document.getElementById('table-income'), filtered, columns, {
     onUpdate: visible => { badge.textContent = `${visible.length} / ${state.income.length} rows`; },
   });
 }
@@ -84,8 +98,12 @@ function renderCategoriesTab() {
     from.appendChild(new Option(m, m));
     to.appendChild(new Option(m, m));
   });
-  const defaultFrom = months[Math.max(0, months.length - 12)];
-  const defaultTo = months[months.length - 1];
+  // Defaults: drive from the global Date Range so the categories tab respects it on first open.
+  const dr = state.dateRange;
+  const startM = dr.start.slice(0, 7);
+  const endM = dr.end.slice(0, 7);
+  const defaultFrom = months.find(m => m >= startM) || months[0];
+  const defaultTo = [...months].reverse().find(m => m <= endM) || months[months.length - 1];
   from.value = defaultFrom;
   to.value = defaultTo;
 
@@ -93,8 +111,9 @@ function renderCategoriesTab() {
     pieExpensesByCategory(state.overview, from.value, to.value);
     stackedBarCategoriesByMonth(state.overview, from.value, to.value);
   };
-  from.addEventListener('change', drawCharts);
-  to.addEventListener('change', drawCharts);
+  // Use `onchange` (single-handler property) so re-renders replace, not stack.
+  from.onchange = drawCharts;
+  to.onchange = drawCharts;
   drawCharts();
 
   const subRows = buildSubCategoryRows(state.payments);
@@ -127,10 +146,10 @@ function renderCategoriesTab() {
 
   console.log(`[categories] overview=${state.overview.length} subRows=${subRows.length} combined=${combinedRows.length}`);
 
-  subSel.addEventListener('change', () => {
+  subSel.onchange = () => {
     const v = subSel.value;
     state.tables.overview.setExtraFilter(v ? r => r.subCategory === v : null);
-  });
+  };
 }
 
 function renderPaymentsTab() {
@@ -144,20 +163,24 @@ function renderPaymentsTab() {
     { key: 'notes', label: 'Notes', type: 'string' },
     { key: 'balance', label: 'Balance', type: 'number', decimals: 2 },
   ];
+  const filtered = filterByDateString(state.payments, state.dateRange);
   const badge = document.getElementById('badge-payments');
   const badgeSum = document.getElementById('badge-payments-sum');
 
   const srcSel = document.getElementById('pay-source');
   const catSel = document.getElementById('pay-category');
   const subSel = document.getElementById('pay-subcategory');
-  const sources = [...new Set(state.payments.map(p => p.source).filter(Boolean))].sort();
-  const cats = [...new Set(state.payments.map(p => p.category))].sort();
+  // Reset and repopulate (handles re-renders after Date Range changes)
+  srcSel.innerHTML = '<option value="">All</option>';
+  catSel.innerHTML = '<option value="">All</option>';
+  const sources = [...new Set(filtered.map(p => p.source).filter(Boolean))].sort();
+  const cats = [...new Set(filtered.map(p => p.category))].sort();
   sources.forEach(s => srcSel.appendChild(new Option(s, s)));
   cats.forEach(c => catSel.appendChild(new Option(c, c)));
 
   const populateSubcategories = () => {
     const cat = catSel.value;
-    const pool = cat ? state.payments.filter(p => p.category === cat) : state.payments;
+    const pool = cat ? filtered.filter(p => p.category === cat) : filtered;
     const subs = [...new Set(pool.map(p => p.subCategory).filter(Boolean))].sort();
     const current = subSel.value;
     subSel.innerHTML = '<option value="">All</option>';
@@ -186,20 +209,22 @@ function renderPaymentsTab() {
     };
   };
 
-  state.tables.payments = renderTable(document.getElementById('table-payments'), state.payments, columns, {
+  state.tables.payments = renderTable(document.getElementById('table-payments'), filtered, columns, {
     sortKey: 'date',
     sortDir: 'desc',
     onUpdate: visible => {
       const sum = visible.reduce((acc, r) => acc + (r.amount || 0), 0);
-      badge.textContent = `${visible.length} / ${state.payments.length} rows`;
+      badge.textContent = `${visible.length} / ${filtered.length} rows (of ${state.payments.length} total)`;
       badgeSum.textContent = `Σ ${formatChf(sum, { decimals: 0 })}`;
     },
   });
 
-  catSel.addEventListener('change', populateSubcategories);
-  [srcSel, catSel, subSel, fromDate, toDate].forEach(el =>
-    el.addEventListener('change', () => state.tables.payments.setExtraFilter(buildFilter()))
-  );
+  const applyExtra = () => state.tables.payments.setExtraFilter(buildFilter());
+  catSel.onchange = () => { populateSubcategories(); applyExtra(); };
+  srcSel.onchange = applyExtra;
+  subSel.onchange = applyExtra;
+  fromDate.onchange = applyExtra;
+  toDate.onchange = applyExtra;
 }
 
 function renderTabContent(name) {
@@ -208,18 +233,47 @@ function renderTabContent(name) {
     case 'income': renderIncomeTab(); break;
     case 'categories': renderCategoriesTab(); break;
     case 'payments': renderPaymentsTab(); break;
-    case 'chat': initChat({ income: state.income, overview: state.overview, payments: state.payments }); break;
+    case 'chat': initChat(state); break;
+  }
+}
+
+function getActiveTabName() {
+  const t = document.querySelector('.tab.active');
+  return t ? t.dataset.tab : 'overview';
+}
+
+function onDateRangeChange(preset) {
+  state.dateRange = computeDateRange(preset);
+  // Invalidate everything that depends on dateRange. Keep `chat` rendered so we
+  // don't re-bind chat event handlers (chat reads state.dateRange live on send).
+  const chatWasRendered = state.rendered.chat;
+  state.rendered = {};
+  if (chatWasRendered) state.rendered.chat = true;
+  noteContextChange(`Date Range changed to ${preset} — subsequent answers reflect the new range.`);
+  recomputeCostPreview();
+  const active = getActiveTabName();
+  if (active !== 'chat') {
+    renderTabContent(active);
+    state.rendered[active] = true;
   }
 }
 
 function wireTabs() {
-  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => activateTab(t.dataset.tab)));
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    setItem('active_tab', t.dataset.tab);
+    activateTab(t.dataset.tab);
+  }));
   document.querySelectorAll('.global-search').forEach(s => {
     s.addEventListener('input', () => {
       const t = state.tables[s.dataset.target];
       if (t) t.setGlobal(s.value);
     });
   });
+  const rangeSel = document.getElementById('date-range');
+  if (rangeSel) {
+    rangeSel.value = state.dateRange.preset;
+    rangeSel.addEventListener('change', () => onDateRangeChange(rangeSel.value));
+  }
 }
 
 async function main(openImport) {
@@ -232,7 +286,7 @@ async function main(openImport) {
     window.__data = state;
     setStatus(`Loaded ${income.length} income, ${overview.length} overview, ${payments.length} payments`);
     wireTabs();
-    activateTab('overview');
+    activateTab(getItem('active_tab') || 'overview');
     console.assert(income.length > 50, 'income rows look low');
     console.assert(overview.length > 400, 'overview rows look low');
     console.assert(payments.length > 3000, 'payments rows look low');

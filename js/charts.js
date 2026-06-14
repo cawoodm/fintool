@@ -22,7 +22,7 @@ function mount(id, config) {
 }
 
 export function lineBankBalance(income) {
-  const rows = income.filter(r => r.isMonthly && r.bankBalance !== null).sort((a, b) => a.month.localeCompare(b.month));
+  const rows = income.filter(r => r.bankBalance !== null).sort((a, b) => a.month.localeCompare(b.month));
   mount('chart-balance', {
     type: 'line',
     data: {
@@ -46,7 +46,7 @@ export function lineBankBalance(income) {
 }
 
 export function barIncomeVsExpenses(income) {
-  const rows = income.filter(r => r.isMonthly && (r.netIncome !== null || r.expenses !== null)).sort((a, b) => a.month.localeCompare(b.month));
+  const rows = income.filter(r => r.netIncome !== null || r.expenses !== null).sort((a, b) => a.month.localeCompare(b.month));
   mount('chart-incexp', {
     type: 'bar',
     data: {

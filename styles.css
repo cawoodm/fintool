@@ -27,6 +27,15 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
 .tab.active { background: var(--accent); color: white; }
 .status { color: var(--muted); font-size: 12px; }
 
+.date-range-wrap {
+  display: inline-flex; gap: 6px; align-items: center;
+  font-size: 12px; color: var(--muted);
+}
+.date-range {
+  font: inherit; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--text); cursor: pointer;
+}
+
 main { padding: 18px; max-width: 1600px; margin: 0 auto; }
 .panel { display: none; }
 .panel.active { display: block; }
@@ -70,6 +79,22 @@ td.pos { color: var(--pos); }
 .chat-settings input { min-width: 280px; }
 .chat-settings button { padding: 6px 14px; border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 6px; cursor: pointer; font: inherit; }
 .chat-log { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 50vh; overflow-y: auto; margin-bottom: 10px; }
+.chat-datasets {
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.chat-datasets label { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; cursor: pointer; user-select: none; }
+.chat-datasets input[type="checkbox"] { cursor: pointer; }
+.chat-datasets .btn-ghost-small { margin-left: auto; }
+
+.cost-preview {
+  padding: 6px 4px; font-family: var(--mono); font-size: 12px;
+  min-height: 1.4em;
+}
+.cost-preview.estimating { opacity: 0.6; }
+.cost-preview .cost-num { color: var(--text); font-weight: 600; }
+
 .chat-history-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .chat-history-bar select { flex: 1; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
 .btn-ghost-small { font: inherit; font-size: 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
@@ -168,3 +193,24 @@ td.pos { color: var(--pos); }
   border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px;
 }
 .btn-ghost:hover { color: var(--neg); border-color: var(--neg); }
+
+/* Window-wide drop overlay (shown while dragging files anywhere on the page) */
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(37, 99, 235, 0.15);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.drop-overlay[hidden] { display: none; }
+.drop-overlay-card {
+  background: var(--panel);
+  border: 3px dashed var(--accent);
+  border-radius: 12px;
+  padding: 32px 40px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  max-width: 480px;
+}
+.drop-overlay-title { font-size: 18px; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
+.drop-overlay-hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
