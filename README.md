@@ -10,7 +10,7 @@ You can host the site yourself or try it out at: https://cawoodm.github.io/finto
 
 ## Highlights
 
-- **Drop in your CSVs and go.** Three files — `income.csv`, `overview.csv`, `payments.csv` — with the headers you'd already export from a spreadsheet. Drag them into the importer or place them in the `data/` folder.
+- **Drop in your CSVs and go.** Three files — `income.csv`, `categories.csv`, `payments.csv` — with the headers you'd already export from a spreadsheet. Drag them onto the page; they're stored in your browser's localStorage.
 - **Four views on the same data.** Overview KPIs and balance trend, Categories with pie + stacked bar, Payments as a fully-filterable table, and a Chat tab that talks to your data.
 - **Global Date Range.** Filter every tab and every chat send to _Last 6 / 12 / 24 months_ or _All time_ with one dropdown in the top bar.
 - **Talk to your data.** The Chat tab calls Claude directly from the browser. Multi-turn conversations persist across reloads. Aggregated payment data and prompt caching keep follow-up turns under common rate limits.
@@ -30,9 +30,9 @@ npm run dev          # http://localhost:5173
 
 The app starts empty. Two ways to load data:
 
-1. **Try the example data** — Download the 3 [example .csv](https://github.com/cawoodm/fintool/tree/main/exampledata) files and drag them into the app.
+1. **Try the demo data** — On first visit with no data, the app prompts you to load the six-month sample CSVs. You can also click the **Demo data** button in the topbar at any time. The samples live in [`examples/`](https://github.com/cawoodm/fintool/tree/main/examples) and are fetched at runtime.
 
-2. Generate your own data in the correct format. See [Data format](#data-format) below.
+2. **Import your own** — Click **Import** (or drag CSV files anywhere on the page). See [Data format](#data-format) below.
 
 You don't need all 3 files and can begin chatting and viewing with only one file.
 
@@ -44,7 +44,7 @@ For the Chat tab, paste an Anthropic API key in the settings row. The key is sto
 
 ### Categories
 
-Pie + stacked bar of expenses broken down by category, plus a sortable table that combines the overview rows with subcategory totals derived from your payments.
+Pie + stacked bar of expenses broken down by category, plus a sortable table that combines the categories rows with subcategory totals derived from your payments.
 
 ![Categories tab](docs/screenshots/categories.png)
 
@@ -56,7 +56,7 @@ Every transaction, filterable by source, category, subcategory, date range, and 
 
 ### Chat
 
-Pick which datasets the model sees (Payments / Overview / Income), watch the live token estimate update as you type, send. Conversations persist across reloads. Changing the Date Range or dataset selection drops an inline notice in the log instead of wiping history.
+Pick which datasets the model sees (Payments / Categories / Income), watch the live token estimate update as you type, send. Conversations persist across reloads. Changing the Date Range or dataset selection drops an inline notice in the log instead of wiping history.
 
 ![Chat tab](docs/screenshots/chat.png)
 
@@ -81,7 +81,7 @@ Month,Pensum,Wage,Net Income,Bank Balance,Expenses,Profit/loss,Balance Diff
 
 One row per month. `Month` is `DD.MM.YYYY` (Swiss/European format) — the day part is decorative; the row represents a month.
 
-### `overview.csv`
+### `categories.csv`
 
 ```
 Month,Category,Expenses,%,Income,Diff/Reason
@@ -111,7 +111,7 @@ Vanilla JS ES modules served by Vite. PapaParse and Chart.js are loaded from CDN
 ```
 js/
 ├── app.js        entry point; owns the global state object, wires tabs and the Date Range filter
-├── parsers.js    CSV loaders (loadIncome/Overview/Payments), date helpers, formatChf
+├── parsers.js    CSV loaders (loadIncome/Categories/Payments) reading from localStorage, date helpers, formatChf
 ├── tables.js     generic renderTable() factory — sort, search, column filters, 2000-row cap
 ├── charts.js     thin Chart.js wrappers; mount() destroys before re-create
 ├── chat.js       browser → Anthropic; multi-turn messages[], cache_control, count_tokens preview
@@ -128,7 +128,7 @@ All persistent state lives under a single namespace:
 | `/fintool/chat_messages`                                | Persisted conversation    |
 | `/fintool/chat_history`                                 | Recent prompts dropdown   |
 | `/fintool/active_tab`                                   | Last-active tab on reload |
-| `/fintool/income.csv` / `overview.csv` / `payments.csv` | Imported CSV text         |
+| `/fintool/income.csv` / `categories.csv` / `payments.csv` | Imported CSV text       |
 
 ---
 
@@ -142,7 +142,7 @@ npm run preview   # Serve dist/ locally
 node examples/generate.mjs   # regenerate the 6-month example CSVs
 ```
 
-No tests, no linter — this is a local tool. The `console.assert` calls in `app.js:main` warn if row counts look unexpectedly low.
+Tests run with `npm test` (Vitest) — the suite covers the parsers and importer header validation, seeded from the same `examples/*.csv` fixtures the Demo button serves. The `console.assert` calls in `app.js:main` warn in the browser console if row counts look unexpectedly low.
 
 ---
 

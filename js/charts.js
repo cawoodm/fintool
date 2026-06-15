@@ -45,6 +45,28 @@ export function lineBankBalance(income) {
   });
 }
 
+export function lineIncomeExpensesBalance(income) {
+  const rows = income
+    .filter(r => r.netIncome !== null || r.expenses !== null || r.bankBalance !== null)
+    .sort((a, b) => a.month.localeCompare(b.month));
+  mount('chart-income-trend', {
+    type: 'line',
+    data: {
+      labels: rows.map(r => r.month),
+      datasets: [
+        { label: 'Net income',   data: rows.map(r => r.netIncome),   borderColor: '#16a34a', backgroundColor: '#16a34a22', tension: 0.25, pointRadius: 2, spanGaps: true },
+        { label: 'Expenses',     data: rows.map(r => r.expenses),    borderColor: '#f59e0b', backgroundColor: '#f59e0b22', tension: 0.25, pointRadius: 2, spanGaps: true },
+        { label: 'Bank balance', data: rows.map(r => r.bankBalance), borderColor: '#2563eb', backgroundColor: '#2563eb22', tension: 0.25, pointRadius: 2, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${formatChf(c.parsed.y, { decimals: 2 })}` } } },
+      scales: { y: { ticks: { callback: currencyTick } } },
+    },
+  });
+}
+
 export function barIncomeVsExpenses(income) {
   const rows = income.filter(r => r.netIncome !== null || r.expenses !== null).sort((a, b) => a.month.localeCompare(b.month));
   mount('chart-incexp', {
@@ -64,8 +86,8 @@ export function barIncomeVsExpenses(income) {
   });
 }
 
-export function pieExpensesByCategory(overview, fromMonth, toMonth) {
-  const rows = overview.filter(r => r.category !== 'Total' && r.month >= fromMonth && r.month <= toMonth && r.expenses);
+export function pieExpensesByCategory(categories, fromMonth, toMonth) {
+  const rows = categories.filter(r => r.category !== 'Total' && r.month >= fromMonth && r.month <= toMonth && r.expenses);
   const totals = new Map();
   for (const r of rows) totals.set(r.category, (totals.get(r.category) || 0) + r.expenses);
   const entries = [...totals.entries()].sort((a, b) => b[1] - a[1]);
@@ -85,8 +107,8 @@ export function pieExpensesByCategory(overview, fromMonth, toMonth) {
   });
 }
 
-export function stackedBarCategoriesByMonth(overview, fromMonth, toMonth) {
-  const rows = overview.filter(r => r.category !== 'Total' && r.month >= fromMonth && r.month <= toMonth && r.expenses);
+export function stackedBarCategoriesByMonth(categories, fromMonth, toMonth) {
+  const rows = categories.filter(r => r.category !== 'Total' && r.month >= fromMonth && r.month <= toMonth && r.expenses);
   const months = [...new Set(rows.map(r => r.month))].sort();
   const cats = [...new Set(rows.map(r => r.category))];
   const byKey = new Map(rows.map(r => [`${r.month}|${r.category}`, r.expenses]));

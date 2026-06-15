@@ -21,7 +21,7 @@ Any additional columns in the file (e.g. `Kindergeld`, `SocInsurance`, `Gross`, 
 
 ---
 
-### `overview.csv` — one row per (month, category)
+### `categories.csv` — one row per (month, category)
 
 Long-format expense summary produced by your budgeting spreadsheet. Each row is one spending category for one month.
 
@@ -68,48 +68,54 @@ If the parsers in `js/parsers.js` gain or drop a column, update `EXPECTED_HEADER
 
 ## Import flow
 
-Two paths exist; both end at the same validator and storage layer.
+The app reads data exclusively from localStorage. Three paths put data there; loaders never touch the network or the filesystem.
 
 ```
-A) User drops files anywhere on the page          B) User clicks the Import button,
-   (drop-overlay appears during drag)                opens the modal, drops/picks a
-                                                     file into a specific type-zone
-        │                                                │
-        └──────────────┬──────────────────────────────────┘
-                       ▼
-            FileReader.readAsText()                  ← importer.js
-                       │
-                       ▼
-            validateHeaders(text, forcedType?)       ← checks EXPECTED_HEADERS
-                       │
-        ┌──────────────┴──────────────┐
-        ▼                             ▼
-  ok=false → alert()              ok=true
-  (no write, no reload)               │
-                                      ▼
-                            setItem(KEYS[type], text)   ← /fintool/<type>.csv
-                                      │
-                                      ▼
-                            location.reload()        ← triggers main()
-                                      │
-                                      ▼
-        fetchCsv('data/X.csv') → checks localStorage first, falls back to network
-                                      │
-                                      ▼
-        PapaParse (header: true) → trimmed string objects
-                                      │
-                                      ▼
-        loadIncome / loadOverview / loadPayments
-          · parseChf()           strips CHF/commas/whitespace → float or null
-          · parsePercent()       strips % → float or null
-          · parsePeriod()    "DD.MM.YYYY" → "YYYY-MM"
-          · parseEuropeanDate()  "DD.MM.YYYY" → "YYYY-MM-DD"
-                                      │
-                                      ▼
-        state.income / state.overview / state.payments   ← app.js in-memory arrays
+A) User drops files anywhere on  B) User clicks Import, opens the  C) User clicks "Demo data" (or
+   the page — drop-overlay         modal, drops/picks a file into     accepts the first-visit prompt)
+   shows during drag               a specific type-zone               → loadDemoData() in importer.js
+        │                               │                                       │
+        └─────────────┬─────────────────┘                                       │
+                      ▼                                                         │
+           FileReader.readAsText()                                              │
+                      │                                                         │
+                      ▼                                                         │
+           validateHeaders(text, forcedType?)                                   │
+                      │                                                         │
+        ┌─────────────┴─────────────┐                                           │
+        ▼                           ▼                                           ▼
+  ok=false → alert()             ok=true                          fetch('/examples/<name>.csv')
+  (no write, no reload)             │                                           │
+                                    │                                           ▼
+                                    │                       (vite.config.js copies examples/*.csv
+                                    │                        into dist/examples/ for production)
+                                    │                                           │
+                                    └──────────────┬────────────────────────────┘
+                                                   ▼
+                                     setItem('<name>.csv', text)   ← /fintool/<name>.csv
+                                                   │
+                                                   ▼
+                                     location.reload()  ← triggers main()
+                                                   │
+                                                   ▼
+                       readCsv('income.csv'|'categories.csv'|'payments.csv')
+                                                   │
+                                                   ▼  (throws NoDataError if missing →
+                                                       app shows demo-data prompt)
+                                     PapaParse (header: true) → trimmed string objects
+                                                   │
+                                                   ▼
+                       loadIncome / loadCategories / loadPayments
+                           · parseChf()           strips CHF/commas/whitespace
+                           · parsePercent()       strips % → float or null
+                           · parsePeriod()        "DD.MM.YYYY" → "YYYY-MM"
+                           · parseEuropeanDate()  "DD.MM.YYYY" → "YYYY-MM-DD"
+                                                   │
+                                                   ▼
+                       state.income / state.categories / state.payments
 ```
 
-Path A handles 1, 2, or 3 files at once: each is detected by header and routed to its matching slot. Path B forces the type to whichever modal drop-zone the file landed on, then validates against that type's expected columns specifically — so dropping a payments file onto the income zone is now rejected, not silently mis-stored.
+Paths A and B handle 1, 2, or 3 files at once: A detects each by header and routes to its matching slot; B forces the type to whichever modal drop-zone the file landed on. Path C only runs on the user's explicit consent (button click or one-shot prompt) and overwrites all three slots.
 
 ---
 
@@ -119,15 +125,15 @@ All `localStorage` keys live under the `/fintool/` prefix (see `js/storage.js`).
 
 | Layer               | What                           | Key                                                                     |
 | ------------------- | ------------------------------ | ----------------------------------------------------------------------- |
-| `localStorage`      | Raw CSV text                   | `/fintool/income.csv`, `/fintool/overview.csv`, `/fintool/payments.csv` |
+| `localStorage`      | Raw CSV text                   | `/fintool/income.csv`, `/fintool/categories.csv`, `/fintool/payments.csv` |
 | `localStorage`      | Active tab                     | `/fintool/active_tab`                                                   |
 | `localStorage`      | Anthropic API key              | `/fintool/anthropic_key`                                                |
 | `localStorage`      | Selected model                 | `/fintool/anthropic_model`                                              |
 | `localStorage`      | Recent chat prompts (up to 50) | `/fintool/chat_history`                                                 |
 | `localStorage`      | Persisted chat messages        | `/fintool/chat_messages`                                                |
-| JS memory (`state`) | Parsed row arrays              | `state.income`, `state.overview`, `state.payments`                      |
+| JS memory (`state`) | Parsed row arrays              | `state.income`, `state.categories`, `state.payments`                    |
 | JS memory (`state`) | Active date range              | `state.dateRange` (preset + start/end ISO strings)                      |
-| JS memory (`state`) | Table instances                | `state.tables.income/overview/payments`                                 |
+| JS memory (`state`) | Table instances                | `state.tables.income/categories/payments`                               |
 
 Nothing leaves the browser except outbound API calls to `api.anthropic.com` when using the Chat tab.
 
@@ -139,7 +145,7 @@ When a chat message is sent, `buildSystemBlocks()` in `chat.js` assembles a syst
 
 **Income** — all monthly rows within the active date range, serialised as TSV.
 
-**Overview** — all category-month rows within the active date range, serialised as TSV.
+**Categories** — all category-month rows within the active date range, serialised as TSV.
 
 **Payments** — filtered to the active date range, then **stripped to 5 columns only** (`Source, Date, Amount, Category, SubCategory`). `Text`, `Notes`, `Balance`, `Actual` are dropped to reduce token count. Row count is typically in the thousands.
 

@@ -89,9 +89,9 @@ function serializeIncome(income, dateRange) {
   ]);
 }
 
-function serializeOverview(overview, dateRange) {
-  const rows = filterByMonthIso(overview, dateRange);
-  return `## overview (${rows.length} category-month rows, CHF)\n` + tsv(rows, [
+function serializeCategories(categories, dateRange) {
+  const rows = filterByMonthIso(categories, dateRange);
+  return `## categories (${rows.length} category-month rows, CHF)\n` + tsv(rows, [
     'month', 'category', 'expenses', 'pct', 'income', 'reason',
   ]);
 }
@@ -140,8 +140,8 @@ function buildSystemBlocks() {
   if (appState.chatDatasets.income) {
     parts.push(serializeIncome(appState.income, appState.dateRange));
   }
-  if (appState.chatDatasets.overview) {
-    parts.push(serializeOverview(appState.overview, appState.dateRange));
+  if (appState.chatDatasets.categories) {
+    parts.push(serializeCategories(appState.categories, appState.dateRange));
   }
   if (appState.chatDatasets.payments) {
     const { csv, rowCount } = buildPaymentsCsv(appState.payments, appState.dateRange);
@@ -410,7 +410,7 @@ export function initChat(stateRef) {
     clearConvBtn: document.getElementById('chat-clear-conversation'),
     costPreview: document.getElementById('cost-preview'),
     dsPayments: document.getElementById('ds-payments'),
-    dsOverview: document.getElementById('ds-overview'),
+    dsCategories: document.getElementById('ds-categories'),
     dsIncome: document.getElementById('ds-income'),
   };
 
@@ -421,7 +421,7 @@ export function initChat(stateRef) {
 
   // Reflect current state into dataset checkboxes (in case state was changed elsewhere).
   dom.dsPayments.checked = appState.chatDatasets.payments;
-  dom.dsOverview.checked = appState.chatDatasets.overview;
+  dom.dsCategories.checked = appState.chatDatasets.categories;
   dom.dsIncome.checked = appState.chatDatasets.income;
 
   recentPrompts = loadRecentPrompts();
@@ -475,12 +475,12 @@ export function initChat(stateRef) {
   // Dataset selector — preserves chat history; just signals the model that subsequent
   // answers will reference a different data slice.
   const onDatasetToggle = (key) => {
-    appState.chatDatasets[key] = ({ payments: dom.dsPayments.checked, overview: dom.dsOverview.checked, income: dom.dsIncome.checked })[key];
+    appState.chatDatasets[key] = ({ payments: dom.dsPayments.checked, categories: dom.dsCategories.checked, income: dom.dsIncome.checked })[key];
     noteContextChange('Datasets changed — subsequent answers reflect the new selection.');
     recomputeCostPreview();
   };
   dom.dsPayments.addEventListener('change', () => onDatasetToggle('payments'));
-  dom.dsOverview.addEventListener('change', () => onDatasetToggle('overview'));
+  dom.dsCategories.addEventListener('change', () => onDatasetToggle('categories'));
   dom.dsIncome.addEventListener('change', () => onDatasetToggle('income'));
 
   dom.input.addEventListener('input', () => recomputeCostPreview());

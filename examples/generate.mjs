@@ -1,4 +1,4 @@
-// Generates 6 months of realistic example CSVs into examples/{income,overview,payments}.csv.
+// Generates 6 months of realistic example CSVs into examples/{income,categories,payments}.csv.
 // Deterministic (seeded RNG) so repeated runs produce identical files.
 //
 // Usage: node examples/generate.mjs
@@ -207,8 +207,8 @@ function generatePayments() {
   return rows;
 }
 
-// ---- overview — derived from payments + income ----------------------------
-function generateOverview(payments, income) {
+// ---- categories — derived from payments + income --------------------------
+function generateCategories(payments, income) {
   const byMonth = new Map();
   for (const p of payments) {
     const [d, mm, yyyy] = p.Date.split('.');
@@ -266,14 +266,14 @@ function toCsv(rows, columns) {
 // ---- write ---------------------------------------------------------------
 const income = generateIncome();
 const payments = generatePayments();
-const overview = generateOverview(payments, income);
+const categories = generateCategories(payments, income);
 
 const INCOME_COLS = ['Month', 'Pensum', 'Wage', 'Net Income', 'Bank Balance', 'Expenses', 'Profit/loss', 'Balance Diff'];
-const OVERVIEW_COLS = ['Month', 'Category', 'Expenses', '%', 'Income', 'Diff/Reason'];
+const CATEGORIES_COLS = ['Month', 'Category', 'Expenses', '%', 'Income', 'Diff/Reason'];
 const PAYMENT_COLS = ['Source', 'Date', 'Text', 'Amount', 'Category', 'SubCategory', 'Notes', 'Balance', 'Actual'];
 
 writeFileSync(join(OUT_DIR, 'income.csv'), toCsv(income, INCOME_COLS));
-writeFileSync(join(OUT_DIR, 'overview.csv'), toCsv(overview, OVERVIEW_COLS));
+writeFileSync(join(OUT_DIR, 'categories.csv'), toCsv(categories, CATEGORIES_COLS));
 writeFileSync(join(OUT_DIR, 'payments.csv'), toCsv(payments, PAYMENT_COLS));
 
-console.log(`Wrote ${income.length} income rows, ${overview.length} overview rows, ${payments.length} payment rows.`);
+console.log(`Wrote ${income.length} income rows, ${categories.length} categories rows, ${payments.length} payment rows.`);

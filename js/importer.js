@@ -2,25 +2,25 @@ import { getItem, setItem, removeItem } from './storage.js';
 
 const KEYS = {
   income: 'income.csv',
-  overview: 'overview.csv',
+  categories: 'categories.csv',
   payments: 'payments.csv',
 };
 
 // Exact header columns each CSV must contain. A file is accepted if its header
 // row contains EVERY column listed here (extras allowed). These mirror the
-// columns read by loadIncome/loadOverview/loadPayments in parsers.js — keep
+// columns read by loadIncome/loadCategories/loadPayments in parsers.js — keep
 // them in sync when the parsers gain or drop a field.
-const EXPECTED_HEADERS = {
+export const EXPECTED_HEADERS = {
   income: ['Month', 'Pensum', 'Wage', 'Net Income', 'Bank Balance',
            'Expenses', 'Profit/loss', 'Balance Diff'],
-  overview: ['Month', 'Category', 'Expenses', '%', 'Income', 'Diff/Reason'],
+  categories: ['Month', 'Category', 'Expenses', '%', 'Income', 'Diff/Reason'],
   payments: ['Source', 'Date', 'Text', 'Amount', 'Category', 'SubCategory',
              'Notes', 'Balance', 'Actual'],
 };
 
 const META = {
   income: { title: 'Income', hint: 'Month · Wage · Net Income · Bank Balance · …' },
-  overview: { title: 'Categories', hint: 'Month · Category · Expenses · % · Diff/Reason · …' },
+  categories: { title: 'Categories', hint: 'Month · Category · Expenses · % · Diff/Reason · …' },
   payments: { title: 'Payments', hint: 'Date · Text · Amount · Category · SubCategory · …' },
 };
 
@@ -29,7 +29,7 @@ function parseHeaderRow(text) {
   return firstLine.split(',').map(h => h.trim());
 }
 
-function validateHeaders(text, forcedType) {
+export function validateHeaders(text, forcedType) {
   const headers = parseHeaderRow(text);
   const set = new Set(headers);
   if (forcedType) {
@@ -51,6 +51,22 @@ export function getLocalCsv(type) {
 
 export function clearAllCsvs() {
   Object.values(KEYS).forEach(k => removeItem(k));
+}
+
+// Load the bundled six-month sample CSVs into the /fintool/ localStorage namespace.
+// Fetched at runtime from /examples/ (served from dist/examples/ in prod via vite.config.js,
+// and from the project root in dev). Honors Vite's --base so it works at /fintool/ too.
+export async function loadDemoData() {
+  const base = import.meta.env?.BASE_URL || '/';
+  const files = ['income.csv', 'categories.csv', 'payments.csv'];
+  const texts = await Promise.all(files.map(async (f) => {
+    const res = await fetch(`${base}examples/${f}`);
+    if (!res.ok) throw new Error(`Demo fetch failed for ${f}: ${res.status}`);
+    return res.text();
+  }));
+  setItem(KEYS.income, texts[0]);
+  setItem(KEYS.categories, texts[1]);
+  setItem(KEYS.payments, texts[2]);
 }
 
 export function initImporter(onReload) {
@@ -93,7 +109,7 @@ export function initImporter(onReload) {
       <div class="drop-overlay-title">Drop CSV files anywhere</div>
       <div class="drop-overlay-hint">
         Each file is matched by its header row — income, categories, or payments —
-        and replaces that dataset. Headers must match exactly (extras allowed).
+        and replaces that dataset in localStorage. Headers must match exactly (extras allowed).
       </div>
     </div>
   `;

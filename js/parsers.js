@@ -37,14 +37,18 @@ export function parseEuropeanDate(value) {
   return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
 }
 
-async function fetchCsv(path) {
-  // e.g. 'data/income.csv' → localStorage key '/fintool/income.csv'
-  const lsKey = path.replace(/^data\//, '')
-  const stored = getItem(lsKey)
+export class NoDataError extends Error {
+  constructor(name) {
+    super(`NO_DATA: ${name}`)
+    this.name = 'NoDataError'
+    this.csvName = name
+  }
+}
+
+function readCsv(name) {
+  const stored = getItem(name)
   if (stored) return stored
-  const res = await fetch(path)
-  if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`)
-  return res.text()
+  throw new NoDataError(name)
 }
 
 function papa(text) {
@@ -59,7 +63,7 @@ function papa(text) {
 }
 
 export async function loadIncome() {
-  const raw = papa(await fetchCsv('data/income.csv'))
+  const raw = papa(readCsv('income.csv'))
   return (
     raw
       .map((r) => {
@@ -81,8 +85,8 @@ export async function loadIncome() {
   )
 }
 
-export async function loadOverview() {
-  const raw = papa(await fetchCsv('data/overview.csv'))
+export async function loadCategories() {
+  const raw = papa(readCsv('categories.csv'))
   return raw
     .filter((r) => r.Month && r.Category)
     .map((r) => ({
@@ -96,7 +100,7 @@ export async function loadOverview() {
 }
 
 export async function loadPayments() {
-  const raw = papa(await fetchCsv('data/payments.csv'))
+  const raw = papa(readCsv('payments.csv'))
   return raw
     .filter((r) => r.Date)
     .map((r) => ({

@@ -1,5 +1,10 @@
 # CHANGELOG
 
+# 15.06.2026 (v0.3.0)
+
+- Bugfix data/exampledata confusion
+- Consistent filenames
+
 # 14.06.2026 (v0.2.0)
 
 - Global Date Range selector (6/12/24mo/all) in the header filters every tab

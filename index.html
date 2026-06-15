@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>FinTool — Personal Finance</title>
+    <title>FinTool — Personal Finance (v0.3.0)</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='system-ui' font-size='18' font-weight='700' fill='white'%3E%E2%82%A3%3C/text%3E%3C/svg%3E"
@@ -32,6 +32,13 @@
           <option value="all">All time</option>
         </select>
       </label>
+      <button
+        class="import-btn"
+        id="btn-demo"
+        title="Load the bundled six-month sample CSVs (overwrites any imported data)"
+      >
+        Demo data
+      </button>
       <button class="import-btn" id="btn-import">Import</button>
       <div class="status" id="loadStatus">Loading…</div>
     </header>
@@ -69,6 +76,10 @@
       </section>
 
       <section class="panel" id="tab-income">
+        <div class="chart-card">
+          <h3>Net income · Expenses · Bank balance over time</h3>
+          <canvas id="chart-income-trend"></canvas>
+        </div>
         <div class="toolbar">
           <input
             type="search"
@@ -113,13 +124,13 @@
           <input
             type="search"
             class="global-search"
-            name="search-overview"
-            aria-label="Search overview"
+            name="search-categories"
+            aria-label="Search categories"
             placeholder="Search…"
-            data-target="overview"
-          /><span class="badge" id="badge-overview"></span>
+            data-target="categories"
+          /><span class="badge" id="badge-categories"></span>
         </div>
-        <div class="table-wrap" id="table-overview"></div>
+        <div class="table-wrap" id="table-categories"></div>
       </section>
 
       <section class="panel" id="tab-payments">
@@ -193,7 +204,7 @@
           <label
             ><input type="checkbox" id="ds-payments" checked /> Payments</label
           >
-          <label><input type="checkbox" id="ds-overview" /> Overview</label>
+          <label><input type="checkbox" id="ds-categories" /> Categories</label>
           <label><input type="checkbox" id="ds-income" /> Income</label>
           <button
             type="button"

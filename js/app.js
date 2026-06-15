@@ -1,8 +1,8 @@
-import { loadIncome, loadOverview, loadPayments, formatChf, filterByDateString, filterByMonthIso } from './parsers.js';
+import { loadIncome, loadCategories, loadPayments, formatChf, filterByDateString, filterByMonthIso, NoDataError } from './parsers.js';
 import { renderTable } from './tables.js';
-import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth } from './charts.js';
+import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth, lineIncomeExpensesBalance } from './charts.js';
 import { initChat, noteContextChange, recomputeCostPreview } from './chat.js';
-import { initImporter } from './importer.js';
+import { initImporter, loadDemoData } from './importer.js';
 import { getItem, setItem } from './storage.js';
 
 function computeDateRange(preset) {
@@ -16,10 +16,10 @@ function computeDateRange(preset) {
 }
 
 const state = {
-  income: [], overview: [], payments: [],
+  income: [], categories: [], payments: [],
   rendered: {}, tables: {},
   dateRange: computeDateRange('last12mo'),
-  chatDatasets: { payments: true, overview: false, income: false },
+  chatDatasets: { payments: true, categories: false, income: false },
 };
 
 function setStatus(text) { document.getElementById('loadStatus').textContent = text; }
@@ -64,6 +64,7 @@ function renderIncomeTab() {
     { key: 'profitLoss', label: 'P/L', type: 'number', decimals: 0, colorPositive: true },
   ];
   const filtered = filterByMonthIso(state.income, state.dateRange);
+  lineIncomeExpensesBalance(filtered);
   const badge = document.getElementById('badge-income');
   state.tables.income = renderTable(document.getElementById('table-income'), filtered, columns, {
     onUpdate: visible => { badge.textContent = `${visible.length} / ${state.income.length} rows`; },
@@ -88,7 +89,7 @@ function buildSubCategoryRows(payments) {
 }
 
 function renderCategoriesTab() {
-  const months = [...new Set(state.overview.map(r => r.month))].sort();
+  const months = [...new Set(state.categories.map(r => r.month))].sort();
   const from = document.getElementById('cat-from');
   const to = document.getElementById('cat-to');
   const subSel = document.getElementById('cat-subcategory');
@@ -108,8 +109,8 @@ function renderCategoriesTab() {
   to.value = defaultTo;
 
   const drawCharts = () => {
-    pieExpensesByCategory(state.overview, from.value, to.value);
-    stackedBarCategoriesByMonth(state.overview, from.value, to.value);
+    pieExpensesByCategory(state.categories, from.value, to.value);
+    stackedBarCategoriesByMonth(state.categories, from.value, to.value);
   };
   // Use `onchange` (single-handler property) so re-renders replace, not stack.
   from.onchange = drawCharts;
@@ -118,7 +119,7 @@ function renderCategoriesTab() {
 
   const subRows = buildSubCategoryRows(state.payments);
   const combinedRows = [
-    ...state.overview.map(r => ({ ...r, subCategory: '' })),
+    ...state.categories.map(r => ({ ...r, subCategory: '' })),
     ...subRows,
   ].sort((a, b) =>
     (a.category || '').localeCompare(b.category || '') ||
@@ -137,18 +138,18 @@ function renderCategoriesTab() {
     { key: 'income', label: 'Income', type: 'number', decimals: 0 },
     { key: 'reason', label: 'Diff/Reason', type: 'string' },
   ];
-  const badge = document.getElementById('badge-overview');
-  state.tables.overview = renderTable(document.getElementById('table-overview'), combinedRows, columns, {
+  const badge = document.getElementById('badge-categories');
+  state.tables.categories = renderTable(document.getElementById('table-categories'), combinedRows, columns, {
     sortKey: 'month',
     sortDir: 'desc',
     onUpdate: visible => { badge.textContent = `${visible.length} / ${combinedRows.length} rows`; },
   });
 
-  console.log(`[categories] overview=${state.overview.length} subRows=${subRows.length} combined=${combinedRows.length}`);
+  console.log(`[categories] categories=${state.categories.length} subRows=${subRows.length} combined=${combinedRows.length}`);
 
   subSel.onchange = () => {
     const v = subSel.value;
-    state.tables.overview.setExtraFilter(v ? r => r.subCategory === v : null);
+    state.tables.categories.setExtraFilter(v ? r => r.subCategory === v : null);
   };
 }
 
@@ -279,25 +280,66 @@ function wireTabs() {
 async function main(openImport) {
   setStatus('Loading CSVs…');
   try {
-    const [income, overview, payments] = await Promise.all([loadIncome(), loadOverview(), loadPayments()]);
+    const [income, categories, payments] = await Promise.all([loadIncome(), loadCategories(), loadPayments()]);
     state.income = income;
-    state.overview = overview;
+    state.categories = categories;
     state.payments = payments.sort((a, b) => a.date.localeCompare(b.date));
     window.__data = state;
-    setStatus(`Loaded ${income.length} income, ${overview.length} overview, ${payments.length} payments`);
+    setStatus(`Loaded ${income.length} income, ${categories.length} categories, ${payments.length} payments`);
     wireTabs();
     activateTab(getItem('active_tab') || 'overview');
-    console.assert(income.length > 50, 'income rows look low');
-    console.assert(overview.length > 400, 'overview rows look low');
-    console.assert(payments.length > 3000, 'payments rows look low');
+    console.assert(income.length >= 6, 'income rows look low');
+    console.assert(categories.length >= 25, 'categories rows look low');
+    console.assert(payments.length >= 100, 'payments rows look low');
   } catch (e) {
-    setStatus('No data found — use Import to load your CSV files');
+    if (e instanceof NoDataError) {
+      setStatus('No data yet — load demo data or import your own CSVs.');
+      await promptForDemoData(openImport);
+      return;
+    }
+    setStatus(`Failed to load data: ${e.message}`);
     console.error(e);
     if (openImport) openImport();
   }
 }
 
+// Called when localStorage has no CSVs. Asks the user once whether to load demo data;
+// if declined, latches the `demo_prompt_seen` flag and falls back to opening the importer.
+async function promptForDemoData(openImport) {
+  if (!getItem('demo_prompt_seen')) {
+    setItem('demo_prompt_seen', '1');
+    if (confirm('No data found. Load six-month demo data so you can try FinTool?\n\nClick Cancel to import your own CSVs instead.')) {
+      try {
+        await loadDemoData();
+      } catch (err) {
+        alert(`Couldn't load demo data: ${err.message}`);
+        if (openImport) openImport();
+        return;
+      }
+      location.reload();
+      return;
+    }
+  }
+  if (openImport) openImport();
+}
+
+function wireDemoButton() {
+  const btn = document.getElementById('btn-demo');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!confirm('Replace all imported data with example data? Your current import will be lost.')) return;
+    try {
+      await loadDemoData();
+    } catch (err) {
+      alert(`Couldn't load demo data: ${err.message}`);
+      return;
+    }
+    location.reload();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const { open } = initImporter(() => location.reload());
+  wireDemoButton();
   await main(open);
 });
