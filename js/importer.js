@@ -1,10 +1,15 @@
 import { getItem, setItem, removeItem } from './storage.js';
+import { fetchGithubCsvs } from './github.js';
 
 const KEYS = {
   income: 'income.csv',
   categories: 'categories.csv',
   payments: 'payments.csv',
 };
+
+// Where the GitHub source is remembered so Refresh can re-pull without re-entry.
+const GH_URL_KEY = 'github_url';
+const GH_PAT_KEY = 'github_pat';
 
 // Exact header columns each CSV must contain. A file is accepted if its header
 // row contains EVERY column listed here (extras allowed). These mirror the
@@ -13,7 +18,7 @@ const KEYS = {
 export const EXPECTED_HEADERS = {
   income: ['Month', 'Pensum', 'Wage', 'Net Income', 'Bank Balance',
            'Expenses', 'Profit/loss', 'Balance Diff'],
-  categories: ['Month', 'Category', 'Expenses', '%', 'Income', 'Diff/Reason'],
+  categories: ['Month', 'Category', 'Expenses', '%', 'Diff/Reason'],
   payments: ['Source', 'Date', 'Text', 'Amount', 'Category', 'SubCategory',
              'Notes', 'Balance', 'Actual'],
 };
@@ -69,6 +74,36 @@ export async function loadDemoData() {
   setItem(KEYS.payments, texts[2]);
 }
 
+// Pull the three CSVs from a GitHub directory URL, validate their headers, and
+// save them. Persists the URL (and the PAT, or clears it when blank) so the
+// topbar Refresh button can re-pull later. Validates ALL files before saving
+// ANY, so storage stays all-or-nothing. Throws on any fetch/validation failure;
+// the caller is responsible for reloading the app.
+export async function importFromGithub({ url, pat }) {
+  const trimmedUrl = (url || '').trim();
+  const trimmedPat = (pat || '').trim();
+  if (!trimmedUrl) throw new Error('Enter a GitHub directory URL.');
+
+  const blobs = await fetchGithubCsvs(trimmedUrl, trimmedPat);
+
+  for (const type of ['income', 'categories', 'payments']) {
+    const result = validateHeaders(blobs[type], type);
+    if (!result.ok) {
+      throw new Error(
+        `${type}.csv doesn't match the ${META[type].title} schema.\n` +
+        `Missing columns: ${result.missing.join(', ') || '(none — unrecognised header)'}`
+      );
+    }
+  }
+
+  setItem(KEYS.income, blobs.income);
+  setItem(KEYS.categories, blobs.categories);
+  setItem(KEYS.payments, blobs.payments);
+  setItem(GH_URL_KEY, trimmedUrl);
+  if (trimmedPat) setItem(GH_PAT_KEY, trimmedPat);
+  else removeItem(GH_PAT_KEY);
+}
+
 export function initImporter(onReload) {
   const modal = document.createElement('div');
   modal.id = 'import-modal';
@@ -82,6 +117,16 @@ export function initImporter(onReload) {
         <button class="import-close" title="Close">✕</button>
       </div>
       <p class="import-hint">Stored in your browser only — nothing is uploaded to any server.</p>
+      <div class="github-import">
+        <div class="gh-title">Import from a GitHub folder</div>
+        <div class="gh-hint">Paste a link to a folder containing income.csv, categories.csv &amp; payments.csv (e.g. github.com/owner/repo/tree/main/path). The URL and token are saved in this browser only.</div>
+        <div class="gh-row">
+          <input type="url" id="gh-url" class="gh-input" placeholder="https://github.com/owner/repo/tree/main/path" />
+          <input type="password" id="gh-pat" class="gh-input gh-pat" placeholder="Token (private repos)" autocomplete="off" />
+          <button class="btn-primary" id="btn-gh-import">Import from GitHub</button>
+        </div>
+        <div class="gh-status" id="gh-status"></div>
+      </div>
       <div class="drop-zones">
         ${Object.entries(META).map(([type, m]) => `
           <div class="drop-zone" data-type="${type}">
@@ -208,6 +253,32 @@ export function initImporter(onReload) {
     if (confirm('Remove all imported CSV data from this browser?')) {
       clearAllCsvs();
       refresh();
+    }
+  });
+
+  // GitHub folder import: prefill from saved source, fetch + validate + save,
+  // then reload (importFromGithub persists the URL/PAT).
+  const ghUrl = modal.querySelector('#gh-url');
+  const ghPat = modal.querySelector('#gh-pat');
+  const ghStatus = modal.querySelector('#gh-status');
+  const ghBtn = modal.querySelector('#btn-gh-import');
+  ghUrl.value = getItem(GH_URL_KEY) || '';
+  ghPat.value = getItem(GH_PAT_KEY) || '';
+
+  ghBtn.addEventListener('click', async () => {
+    ghBtn.disabled = true;
+    ghStatus.className = 'gh-status';
+    ghStatus.textContent = 'Fetching from GitHub…';
+    try {
+      await importFromGithub({ url: ghUrl.value, pat: ghPat.value });
+      ghStatus.classList.add('ok');
+      ghStatus.textContent = '✓ Imported — reloading…';
+      refresh();
+      onReload();
+    } catch (err) {
+      ghStatus.classList.add('err');
+      ghStatus.textContent = err.message;
+      ghBtn.disabled = false;
     }
   });
 

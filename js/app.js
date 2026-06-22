@@ -2,7 +2,7 @@ import { loadIncome, loadCategories, loadPayments, formatChf, filterByDateString
 import { renderTable } from './tables.js';
 import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth, lineIncomeExpensesBalance } from './charts.js';
 import { initChat, noteContextChange, recomputeCostPreview } from './chat.js';
-import { initImporter, loadDemoData } from './importer.js';
+import { initImporter, loadDemoData, importFromGithub } from './importer.js';
 import { getItem, setItem } from './storage.js';
 
 function computeDateRange(preset) {
@@ -80,7 +80,7 @@ function buildSubCategoryRows(payments) {
     const key = `${month}|${p.category}|${p.subCategory}`;
     const entry = map.get(key) || {
       month, category: p.category, subCategory: p.subCategory,
-      expenses: 0, pct: null, income: null, reason: '(from payments)',
+      expenses: 0, pct: null, reason: '(from payments)',
     };
     entry.expenses += (p.amount || 0);
     map.set(key, entry);
@@ -117,9 +117,11 @@ function renderCategoriesTab() {
   to.onchange = drawCharts;
   drawCharts();
 
-  const subRows = buildSubCategoryRows(state.payments);
+  const filteredCategories = filterByMonthIso(state.categories, state.dateRange);
+  const filteredPayments = filterByDateString(state.payments, state.dateRange);
+  const subRows = buildSubCategoryRows(filteredPayments);
   const combinedRows = [
-    ...state.categories.map(r => ({ ...r, subCategory: '' })),
+    ...filteredCategories.map(r => ({ ...r, subCategory: '' })),
     ...subRows,
   ].sort((a, b) =>
     (a.category || '').localeCompare(b.category || '') ||
@@ -127,6 +129,7 @@ function renderCategoriesTab() {
   );
 
   const subs = [...new Set(subRows.map(r => r.subCategory))].sort();
+  if (subs.length) subSel.appendChild(new Option('— none —', '__none__'));
   subs.forEach(s => subSel.appendChild(new Option(s, s)));
 
   const columns = [
@@ -134,8 +137,7 @@ function renderCategoriesTab() {
     { key: 'category', label: 'Category', type: 'string' },
     { key: 'subCategory', label: 'SubCategory', type: 'string' },
     { key: 'expenses', label: 'Expenses', type: 'number', decimals: 0 },
-    { key: 'pct', label: '%', type: 'number', decimals: 0, format: v => v === null ? '' : `${v}%` },
-    { key: 'income', label: 'Income', type: 'number', decimals: 0 },
+    { key: 'pct', label: '%', type: 'number', decimals: 0, format: v => v === null ? '' : `${Math.round(v * 100)}%` },
     { key: 'reason', label: 'Diff/Reason', type: 'string' },
   ];
   const badge = document.getElementById('badge-categories');
@@ -149,7 +151,9 @@ function renderCategoriesTab() {
 
   subSel.onchange = () => {
     const v = subSel.value;
-    state.tables.categories.setExtraFilter(v ? r => r.subCategory === v : null);
+    if (!v) state.tables.categories.setExtraFilter(null);
+    else if (v === '__none__') state.tables.categories.setExtraFilter(r => !r.subCategory);
+    else state.tables.categories.setExtraFilter(r => r.subCategory === v);
   };
 }
 
@@ -338,8 +342,32 @@ function wireDemoButton() {
   });
 }
 
+// Shown only when a GitHub source has been saved. Re-pulls the latest CSVs from
+// the stored URL/PAT (via importFromGithub) and reloads to re-render.
+function wireRefreshButton() {
+  const btn = document.getElementById('btn-refresh');
+  if (!btn) return;
+  if (!getItem('github_url')) return;
+  btn.removeAttribute('hidden');
+  btn.addEventListener('click', async () => {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+    try {
+      await importFromGithub({ url: getItem('github_url'), pat: getItem('github_pat') });
+    } catch (err) {
+      alert(`Couldn't refresh from GitHub: ${err.message}`);
+      btn.disabled = false;
+      btn.textContent = original;
+      return;
+    }
+    location.reload();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const { open } = initImporter(() => location.reload());
   wireDemoButton();
+  wireRefreshButton();
   await main(open);
 });

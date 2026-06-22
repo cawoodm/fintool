@@ -164,6 +164,19 @@ td.pos { color: var(--pos); }
 .import-close:hover { background: var(--bg); color: var(--text); }
 .import-hint { margin: 0 0 16px; font-size: 12px; color: var(--muted); }
 
+/* GitHub import panel */
+.github-import { margin: 0 0 18px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.gh-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.gh-hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+.gh-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.gh-input { flex: 1 1 220px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px; background: var(--panel); color: var(--text); }
+.gh-input:focus { outline: none; border-color: var(--accent); }
+.gh-pat { flex: 0 1 180px; }
+.gh-row .btn-primary { flex: 0 0 auto; }
+.gh-status { font-size: 12px; margin-top: 8px; white-space: pre-line; color: var(--muted); }
+.gh-status.ok { color: #16a34a; }
+.gh-status.err { color: var(--neg); }
+
 /* Drop zones */
 .drop-zones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .drop-zone {

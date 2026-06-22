@@ -29,8 +29,9 @@ function main() {
     git add .
     git commit -m "fintool-$ver-$(Get-Date -f yyyyMMddHHmm)"
     if ($LASTEXITCODE -ne 0) { Write-Warning "Nothing to commit (or commit failed)." }
-    #git push
-    #if ($LASTEXITCODE -ne 0) { throw "GIT PUSH Failed!" }
+    git push
+    if ($LASTEXITCODE -ne 0) { throw "GIT PUSH Failed!" }
+    start "https://cawoodm.github.io/fintool"
   } catch {
     throw $_
   } finally {

@@ -94,7 +94,6 @@ export async function loadCategories() {
       category: r.Category,
       expenses: parseChf(r.Expenses),
       pct: parsePercent(r['%']),
-      income: parseChf(r.Income),
       reason: r['Diff/Reason'] || '',
     }))
 }

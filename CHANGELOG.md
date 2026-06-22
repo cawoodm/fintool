@@ -1,9 +1,14 @@
 # CHANGELOG
 
+# 22.06.2026 (v0.4.0)
+
+- Import CSVs directly from a GitHub folder (public, or private via a Personal Access Token)
+- Refresh button re-pulls the latest data from the saved GitHub source
+
 # 15.06.2026 (v0.3.0)
 
-- Bugfix data/exampledata confusion
-- Consistent filenames
+- Consistent UI/Data naming
+- Demo Data Load
 
 # 14.06.2026 (v0.2.0)
 
