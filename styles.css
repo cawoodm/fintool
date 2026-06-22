@@ -13,7 +13,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
 .topbar {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; row-gap: 8px;
   padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 10;
 }
@@ -64,6 +64,9 @@ table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.data thead { position: sticky; top: 0; background: var(--panel); z-index: 1; }
 table.data th, table.data td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; white-space: nowrap; }
 table.data th.num, table.data td.num { text-align: right; font-family: var(--mono); }
+/* Text column fills the leftover width and wraps, instead of forcing the table
+   wider than its container (all other columns keep their content widths via nowrap). */
+table.data th.col-text, table.data td.col-text { white-space: normal; word-break: break-word; width: 100%; min-width: 8rem; }
 table.data th { cursor: pointer; user-select: none; font-weight: 600; }
 table.data th:hover { background: var(--accent-light); }
 table.data th .sort { color: var(--accent); margin-left: 4px; }

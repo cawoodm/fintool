@@ -1,7 +1,7 @@
 {
   "name": "fintool",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "publish": "pwsh ci/publish.ps1"
+    "publish": "pwsh ci/publish.ps1",
+    "docker:build": "docker build -t fintool .",
+    "docker:run": "docker run -d --restart always -p 8082:80 --name fintool fintool",
+    "docker": "npm run docker:build && npm run docker:run && start http://localhost:8082"
   },
   "devDependencies": {
     "papaparse": "^5.4.1",

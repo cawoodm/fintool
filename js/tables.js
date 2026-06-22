@@ -61,6 +61,7 @@ export function renderTable(container, rows, columns, opts = {}) {
   columns.forEach(c => {
     const th = document.createElement('th');
     th.textContent = c.label;
+    th.classList.add(`col-${c.key}`);
     if (c.type === 'number') th.classList.add('num');
     th.addEventListener('click', () => {
       if (sortKey === c.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
@@ -70,6 +71,7 @@ export function renderTable(container, rows, columns, opts = {}) {
     headerRow.appendChild(th);
 
     const fth = document.createElement('th');
+    fth.classList.add(`col-${c.key}`);
     if (c.type === 'number') fth.classList.add('num');
     const inp = document.createElement('input');
     inp.type = 'text';
@@ -125,6 +127,7 @@ export function renderTable(container, rows, columns, opts = {}) {
       const tr = document.createElement('tr');
       for (const c of columns) {
         const td = document.createElement('td');
+        td.classList.add(`col-${c.key}`);
         const raw = r[c.key];
         let txt = '';
         if (c.format) txt = c.format(raw, r);

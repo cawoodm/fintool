@@ -32,6 +32,18 @@
           <option value="all">All time</option>
         </select>
       </label>
+      <label class="date-range-wrap"
+        >Category
+        <select id="global-category" class="date-range">
+          <option value="">All</option>
+        </select>
+      </label>
+      <label class="date-range-wrap"
+        >SubCategory
+        <select id="global-subcategory" class="date-range">
+          <option value="">All</option>
+        </select>
+      </label>
       <button
         class="import-btn"
         id="btn-demo"
@@ -104,6 +116,13 @@
       <section class="panel" id="tab-categories">
         <div class="toolbar">
           <label
+            >Chart
+            <select id="cat-dimension">
+              <option value="category" selected>Category</option>
+              <option value="subCategory">Subcategory</option>
+            </select></label
+          >
+          <label
             >From
             <select id="cat-from"></select
           ></label>
@@ -111,20 +130,14 @@
             >To
             <select id="cat-to"></select
           ></label>
-          <label
-            >SubCategory
-            <select id="cat-subcategory">
-              <option value="">All</option>
-            </select></label
-          >
         </div>
         <div class="chart-grid">
           <div class="chart-card">
-            <h3>Expenses by category</h3>
+            <h3 id="chart-pie-title">Expenses by category</h3>
             <canvas id="chart-pie"></canvas>
           </div>
           <div class="chart-card">
-            <h3>Category spend per month</h3>
+            <h3 id="chart-stack-title">Category spend per month</h3>
             <canvas id="chart-stack"></canvas>
           </div>
         </div>
@@ -154,18 +167,6 @@
           <label
             >Source
             <select id="pay-source">
-              <option value="">All</option>
-            </select></label
-          >
-          <label
-            >Category
-            <select id="pay-category">
-              <option value="">All</option>
-            </select></label
-          >
-          <label
-            >SubCategory
-            <select id="pay-subcategory">
               <option value="">All</option>
             </select></label
           >

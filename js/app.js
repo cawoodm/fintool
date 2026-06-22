@@ -19,6 +19,9 @@ const state = {
   income: [], categories: [], payments: [],
   rendered: {}, tables: {},
   dateRange: computeDateRange('last12mo'),
+  // Global Category / SubCategory filters (header dropdowns). Like dateRange, these
+  // are the single source of truth and apply across every tab + the chat datasets.
+  filters: { category: '', subCategory: '' },
   chatDatasets: { payments: true, categories: false, income: false },
 };
 
@@ -92,7 +95,6 @@ function renderCategoriesTab() {
   const months = [...new Set(state.categories.map(r => r.month))].sort();
   const from = document.getElementById('cat-from');
   const to = document.getElementById('cat-to');
-  const subSel = document.getElementById('cat-subcategory');
   from.innerHTML = '';
   to.innerHTML = '';
   months.forEach(m => {
@@ -108,14 +110,7 @@ function renderCategoriesTab() {
   from.value = defaultFrom;
   to.value = defaultTo;
 
-  const drawCharts = () => {
-    pieExpensesByCategory(state.categories, from.value, to.value);
-    stackedBarCategoriesByMonth(state.categories, from.value, to.value);
-  };
-  // Use `onchange` (single-handler property) so re-renders replace, not stack.
-  from.onchange = drawCharts;
-  to.onchange = drawCharts;
-  drawCharts();
+  const dimSel = document.getElementById('cat-dimension');
 
   const filteredCategories = filterByMonthIso(state.categories, state.dateRange);
   const filteredPayments = filterByDateString(state.payments, state.dateRange);
@@ -128,10 +123,6 @@ function renderCategoriesTab() {
     (a.subCategory || '').localeCompare(b.subCategory || '')
   );
 
-  const subs = [...new Set(subRows.map(r => r.subCategory))].sort();
-  if (subs.length) subSel.appendChild(new Option('— none —', '__none__'));
-  subs.forEach(s => subSel.appendChild(new Option(s, s)));
-
   const columns = [
     { key: 'month', label: 'Month', type: 'string' },
     { key: 'category', label: 'Category', type: 'string' },
@@ -141,20 +132,59 @@ function renderCategoriesTab() {
     { key: 'reason', label: 'Diff/Reason', type: 'string' },
   ];
   const badge = document.getElementById('badge-categories');
+
+  // Charts mirror the table's visible rows so they respond to EVERY filter
+  // (dropdowns, per-column filters, search). The table's combinedRows mix two
+  // granularities, so chart only the matching one to avoid double-counting:
+  // Category mode → category-level rows (no subCategory); Subcategory mode → the
+  // payment-derived rows (subCategory set).
+  const drawCharts = (visible) => {
+    const dim = dimSel.value; // 'category' | 'subCategory'
+    const rows = dim === 'subCategory'
+      ? visible.filter(r => r.subCategory)
+      : visible.filter(r => !r.subCategory);
+    pieExpensesByCategory(rows, dim);
+    stackedBarCategoriesByMonth(rows, dim);
+    const noun = dim === 'subCategory' ? 'subcategory' : 'category';
+    document.getElementById('chart-pie-title').textContent = `Expenses by ${noun}`;
+    document.getElementById('chart-stack-title').textContent =
+      `${noun.charAt(0).toUpperCase() + noun.slice(1)} spend per month`;
+  };
+
+  // The local From/To plus the GLOBAL Category/SubCategory filters drive the table's
+  // extra filter; the charts follow via onUpdate.
+  const buildFilter = () => {
+    const fromM = from.value;
+    const toM = to.value;
+    const cat = state.filters.category;
+    const sub = state.filters.subCategory;
+    return r => {
+      if (fromM && r.month < fromM) return false;
+      if (toM && r.month > toM) return false;
+      if (cat && r.category !== cat) return false;
+      // SubCategory rows only exist in the payment-derived rows; a category-level
+      // row (subCategory === '') is dropped when a specific subcategory is chosen.
+      if (sub && r.subCategory !== sub) return false;
+      return true;
+    };
+  };
+
   state.tables.categories = renderTable(document.getElementById('table-categories'), combinedRows, columns, {
     sortKey: 'month',
     sortDir: 'desc',
-    onUpdate: visible => { badge.textContent = `${visible.length} / ${combinedRows.length} rows`; },
+    extraFilter: buildFilter(),
+    onUpdate: visible => {
+      badge.textContent = `${visible.length} / ${combinedRows.length} rows`;
+      drawCharts(visible);
+    },
   });
 
-  console.log(`[categories] categories=${state.categories.length} subRows=${subRows.length} combined=${combinedRows.length}`);
-
-  subSel.onchange = () => {
-    const v = subSel.value;
-    if (!v) state.tables.categories.setExtraFilter(null);
-    else if (v === '__none__') state.tables.categories.setExtraFilter(r => !r.subCategory);
-    else state.tables.categories.setExtraFilter(r => r.subCategory === v);
-  };
+  const applyExtra = () => state.tables.categories.setExtraFilter(buildFilter());
+  // Use `onchange` (single-handler property) so re-renders replace, not stack.
+  from.onchange = applyExtra;
+  to.onchange = applyExtra;
+  // Dimension only changes how the (unchanged) visible rows are grouped.
+  dimSel.onchange = () => drawCharts(state.tables.categories.getVisible());
 }
 
 function renderPaymentsTab() {
@@ -173,34 +203,19 @@ function renderPaymentsTab() {
   const badgeSum = document.getElementById('badge-payments-sum');
 
   const srcSel = document.getElementById('pay-source');
-  const catSel = document.getElementById('pay-category');
-  const subSel = document.getElementById('pay-subcategory');
   // Reset and repopulate (handles re-renders after Date Range changes)
   srcSel.innerHTML = '<option value="">All</option>';
-  catSel.innerHTML = '<option value="">All</option>';
   const sources = [...new Set(filtered.map(p => p.source).filter(Boolean))].sort();
-  const cats = [...new Set(filtered.map(p => p.category))].sort();
   sources.forEach(s => srcSel.appendChild(new Option(s, s)));
-  cats.forEach(c => catSel.appendChild(new Option(c, c)));
-
-  const populateSubcategories = () => {
-    const cat = catSel.value;
-    const pool = cat ? filtered.filter(p => p.category === cat) : filtered;
-    const subs = [...new Set(pool.map(p => p.subCategory).filter(Boolean))].sort();
-    const current = subSel.value;
-    subSel.innerHTML = '<option value="">All</option>';
-    subs.forEach(s => subSel.appendChild(new Option(s, s)));
-    if (subs.includes(current)) subSel.value = current;
-  };
-  populateSubcategories();
 
   const fromDate = document.getElementById('pay-from');
   const toDate = document.getElementById('pay-to');
 
+  // Local Source + From/To, plus the GLOBAL Category/SubCategory filters.
   const buildFilter = () => {
     const src = srcSel.value;
-    const cat = catSel.value;
-    const sub = subSel.value;
+    const cat = state.filters.category;
+    const sub = state.filters.subCategory;
     const fd = fromDate.value;
     const td = toDate.value;
     if (!src && !cat && !sub && !fd && !td) return null;
@@ -217,6 +232,7 @@ function renderPaymentsTab() {
   state.tables.payments = renderTable(document.getElementById('table-payments'), filtered, columns, {
     sortKey: 'date',
     sortDir: 'desc',
+    extraFilter: buildFilter(),
     onUpdate: visible => {
       const sum = visible.reduce((acc, r) => acc + (r.amount || 0), 0);
       badge.textContent = `${visible.length} / ${filtered.length} rows (of ${state.payments.length} total)`;
@@ -225,9 +241,7 @@ function renderPaymentsTab() {
   });
 
   const applyExtra = () => state.tables.payments.setExtraFilter(buildFilter());
-  catSel.onchange = () => { populateSubcategories(); applyExtra(); };
   srcSel.onchange = applyExtra;
-  subSel.onchange = applyExtra;
   fromDate.onchange = applyExtra;
   toDate.onchange = applyExtra;
 }
@@ -247,20 +261,64 @@ function getActiveTabName() {
   return t ? t.dataset.tab : 'overview';
 }
 
-function onDateRangeChange(preset) {
-  state.dateRange = computeDateRange(preset);
-  // Invalidate everything that depends on dateRange. Keep `chat` rendered so we
-  // don't re-bind chat event handlers (chat reads state.dateRange live on send).
+// Shared by every global control (Date Range, Category, SubCategory): invalidate all
+// tabs that depend on the changed state, drop a notice in chat, and re-render the
+// active tab. Keep `chat` rendered so we don't re-bind chat handlers (chat reads
+// state.dateRange / state.filters live on send).
+function invalidateAndRerender(notice) {
   const chatWasRendered = state.rendered.chat;
   state.rendered = {};
   if (chatWasRendered) state.rendered.chat = true;
-  noteContextChange(`Date Range changed to ${preset} — subsequent answers reflect the new range.`);
+  noteContextChange(notice);
   recomputeCostPreview();
   const active = getActiveTabName();
   if (active !== 'chat') {
     renderTabContent(active);
     state.rendered[active] = true;
   }
+}
+
+function onDateRangeChange(preset) {
+  state.dateRange = computeDateRange(preset);
+  invalidateAndRerender(`Date Range changed to ${preset} — subsequent answers reflect the new range.`);
+}
+
+// Category options come from categories.csv + payments (minus the 'Total' summary
+// row). Subcategories live only on payments and cascade from the chosen category.
+function populateGlobalFilters() {
+  const catSel = document.getElementById('global-category');
+  const cats = [...new Set([
+    ...state.categories.map(r => r.category),
+    ...state.payments.map(p => p.category),
+  ].filter(c => c && c !== 'Total'))].sort();
+  catSel.innerHTML = '<option value="">All</option>';
+  cats.forEach(c => catSel.appendChild(new Option(c, c)));
+  if (cats.includes(state.filters.category)) catSel.value = state.filters.category;
+  else state.filters.category = '';
+  populateGlobalSubcategories();
+}
+
+function populateGlobalSubcategories() {
+  const subSel = document.getElementById('global-subcategory');
+  const cat = state.filters.category;
+  const pool = cat ? state.payments.filter(p => p.category === cat) : state.payments;
+  const subs = [...new Set(pool.map(p => p.subCategory).filter(Boolean))].sort();
+  subSel.innerHTML = '<option value="">All</option>';
+  subs.forEach(s => subSel.appendChild(new Option(s, s)));
+  if (subs.includes(state.filters.subCategory)) subSel.value = state.filters.subCategory;
+  else state.filters.subCategory = '';
+}
+
+function onGlobalFilterChange(which) {
+  if (which === 'category') {
+    state.filters.category = document.getElementById('global-category').value;
+    state.filters.subCategory = ''; // reset, then rebuild the cascade
+    populateGlobalSubcategories();
+  } else {
+    state.filters.subCategory = document.getElementById('global-subcategory').value;
+  }
+  const label = `${state.filters.category || 'All categories'} / ${state.filters.subCategory || 'all subcategories'}`;
+  invalidateAndRerender(`Filter changed to ${label} — subsequent answers reflect it.`);
 }
 
 function wireTabs() {
@@ -279,6 +337,10 @@ function wireTabs() {
     rangeSel.value = state.dateRange.preset;
     rangeSel.addEventListener('change', () => onDateRangeChange(rangeSel.value));
   }
+  const gCat = document.getElementById('global-category');
+  const gSub = document.getElementById('global-subcategory');
+  if (gCat) gCat.addEventListener('change', () => onGlobalFilterChange('category'));
+  if (gSub) gSub.addEventListener('change', () => onGlobalFilterChange('subcategory'));
 }
 
 async function main(openImport) {
@@ -290,6 +352,7 @@ async function main(openImport) {
     state.payments = payments.sort((a, b) => a.date.localeCompare(b.date));
     window.__data = state;
     setStatus(`Loaded ${income.length} income, ${categories.length} categories, ${payments.length} payments`);
+    populateGlobalFilters();
     wireTabs();
     activateTab(getItem('active_tab') || 'overview');
     console.assert(income.length >= 6, 'income rows look low');

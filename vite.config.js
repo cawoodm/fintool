@@ -21,4 +21,7 @@ const copyExamples = {
 
 export default defineConfig({
   plugins: [copyExamples],
+  server: {
+    host: true, // listen on all addresses so other devices on the LAN can connect
+  },
 });

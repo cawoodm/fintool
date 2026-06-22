@@ -89,8 +89,10 @@ function serializeIncome(income, dateRange) {
   ]);
 }
 
-function serializeCategories(categories, dateRange) {
-  const rows = filterByMonthIso(categories, dateRange);
+function serializeCategories(categories, dateRange, filters) {
+  let rows = filterByMonthIso(categories, dateRange);
+  // SubCategory doesn't exist on category-level rows, so only the category filter applies here.
+  if (filters?.category) rows = rows.filter(r => r.category === filters.category);
   return `## categories (${rows.length} category-month rows, CHF)\n` + tsv(rows, [
     'month', 'category', 'expenses', 'pct', 'income', 'reason',
   ]);
@@ -99,8 +101,10 @@ function serializeCategories(categories, dateRange) {
 // Aggregated payments: group by (Month, Source, Category, SubCategory).
 // Sum Amount, count transactions. ~3-4x smaller than the raw per-transaction CSV,
 // which keeps us under the 10K input-TPM limit on consecutive sends.
-function buildPaymentsCsv(payments, dateRange) {
-  const filtered = filterByDateString(payments, dateRange);
+function buildPaymentsCsv(payments, dateRange, filters) {
+  let filtered = filterByDateString(payments, dateRange);
+  if (filters?.category) filtered = filtered.filter(p => p.category === filters.category);
+  if (filters?.subCategory) filtered = filtered.filter(p => p.subCategory === filters.subCategory);
   const groups = new Map();
   for (const p of filtered) {
     const month = (p.date || '').slice(0, 7);
@@ -141,14 +145,18 @@ function buildSystemBlocks() {
     parts.push(serializeIncome(appState.income, appState.dateRange));
   }
   if (appState.chatDatasets.categories) {
-    parts.push(serializeCategories(appState.categories, appState.dateRange));
+    parts.push(serializeCategories(appState.categories, appState.dateRange, appState.filters));
   }
   if (appState.chatDatasets.payments) {
-    const { csv, rowCount } = buildPaymentsCsv(appState.payments, appState.dateRange);
+    const { csv, rowCount } = buildPaymentsCsv(appState.payments, appState.dateRange, appState.filters);
     parts.push(`## payments — monthly aggregate (${rowCount} rows, CSV: Month,Source,Category,SubCategory,Amount,Count)\nAmount is the SUM of all transactions in that month for that (Source, Category, SubCategory) combination. Count is the number of transactions in that group.\n\n${csv}`);
   }
   if (parts.length) {
-    parts.unshift(`# Financial data — Date Range: ${appState.dateRange.start} → ${appState.dateRange.end}`);
+    const f = appState.filters || {};
+    const filterNote = (f.category || f.subCategory)
+      ? `, Filter: ${f.category || 'All'}${f.subCategory ? ' / ' + f.subCategory : ''}`
+      : '';
+    parts.unshift(`# Financial data — Date Range: ${appState.dateRange.start} → ${appState.dateRange.end}${filterNote}`);
     blocks.push({
       type: 'text',
       text: parts.join('\n\n'),

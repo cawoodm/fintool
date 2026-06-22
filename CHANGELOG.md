@@ -1,5 +1,12 @@
 # CHANGELOG
 
+# 22.06.2026 (v0.5.0)
+
+- Global Category / SubCategory filters in the header — apply across all tabs and the chat data
+- Categories chart can switch between Category and Subcategory grouping; charts respond to all table filters
+- Payments "Text" column fills remaining width instead of growing without limit
+- Docker: container build + run with restart-always; dev server listens on the LAN
+
 # 22.06.2026 (v0.4.0)
 
 - Import CSVs directly from a GitHub folder (public, or private via a Personal Access Token)

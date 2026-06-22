@@ -86,10 +86,13 @@ export function barIncomeVsExpenses(income) {
   });
 }
 
-export function pieExpensesByCategory(categories, fromMonth, toMonth) {
-  const rows = categories.filter(r => r.category !== 'Total' && r.month >= fromMonth && r.month <= toMonth && r.expenses);
+// `keyField` selects the grouping dimension: 'category' or 'subCategory'. Rows are
+// expected to be already filtered (the Categories tab feeds the table's visible rows),
+// so this only groups + sums; each row needs { [keyField], expenses }.
+export function pieExpensesByCategory(rows, keyField = 'category') {
+  const valid = rows.filter(r => r[keyField] && r[keyField] !== 'Total' && r.expenses);
   const totals = new Map();
-  for (const r of rows) totals.set(r.category, (totals.get(r.category) || 0) + r.expenses);
+  for (const r of valid) totals.set(r[keyField], (totals.get(r[keyField]) || 0) + r.expenses);
   const entries = [...totals.entries()].sort((a, b) => b[1] - a[1]);
   mount('chart-pie', {
     type: 'doughnut',
@@ -107,11 +110,16 @@ export function pieExpensesByCategory(categories, fromMonth, toMonth) {
   });
 }
 
-export function stackedBarCategoriesByMonth(categories, fromMonth, toMonth) {
-  const rows = categories.filter(r => r.category !== 'Total' && r.month >= fromMonth && r.month <= toMonth && r.expenses);
-  const months = [...new Set(rows.map(r => r.month))].sort();
-  const cats = [...new Set(rows.map(r => r.category))];
-  const byKey = new Map(rows.map(r => [`${r.month}|${r.category}`, r.expenses]));
+export function stackedBarCategoriesByMonth(rows, keyField = 'category') {
+  const valid = rows.filter(r => r[keyField] && r[keyField] !== 'Total' && r.expenses);
+  const months = [...new Set(valid.map(r => r.month))].sort();
+  const cats = [...new Set(valid.map(r => r[keyField]))];
+  // Sum, not assign: two categories can share a subcategory label in the same month.
+  const byKey = new Map();
+  for (const r of valid) {
+    const k = `${r.month}|${r[keyField]}`;
+    byKey.set(k, (byKey.get(k) || 0) + r.expenses);
+  }
   mount('chart-stack', {
     type: 'bar',
     data: {
