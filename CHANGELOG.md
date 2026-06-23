@@ -1,5 +1,9 @@
 # CHANGELOG
 
+# 23.06.2026 (v0.6.0)
+
+- Save individual chat responses (★ Save) — kept permanently in a dropdown, even after the chat is cleared
+
 # 22.06.2026 (v0.5.0)
 
 - Global Category / SubCategory filters in the header — apply across all tabs and the chat data

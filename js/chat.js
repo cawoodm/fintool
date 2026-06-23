@@ -5,8 +5,10 @@ const KEY_STORAGE = 'anthropic_key';
 const MODEL_STORAGE = 'anthropic_model';
 const PROMPTS_STORAGE = 'chat_history';
 const MESSAGES_STORAGE = 'chat_messages';
+const SAVED_STORAGE = 'chat_saved_responses';
 const LEGACY_FILE_ID_KEY = 'payments_file_id';
 const PROMPTS_CAP = 50;
+const SAVED_CAP = 200;
 
 const API_BASE = 'https://api.anthropic.com/v1';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -36,6 +38,7 @@ try { removeItem(LEGACY_FILE_ID_KEY); } catch { /* ignore */ }
 let appState = null;            // reference to the live app state object
 let messages = [];              // conversation history: array of {role, content}
 let recentPrompts = [];         // reusable recent prompts (localStorage)
+let savedResponses = [];        // explicitly-saved assistant responses (localStorage; survive chat clears)
 let sendInFlight = false;       // serialize chat sends (multi-turn race guard)
 let sendGeneration = 0;         // bumped on any state change; in-flight sends compare
 let dom = {};                   // cached DOM nodes after initChat
@@ -66,6 +69,32 @@ function renderRecentPrompts(sel, prompts) {
     sel.appendChild(new Option(label, String(i)));
   });
   sel.value = current;
+}
+
+// Saved responses are stored separately from the conversation (MESSAGES_STORAGE), so
+// clearing the chat never removes them — they stay available in the dropdown.
+function loadSavedResponses() {
+  try { return JSON.parse(getItem(SAVED_STORAGE) || '[]'); }
+  catch { return []; }
+}
+function saveSavedResponses() { setItem(SAVED_STORAGE, JSON.stringify(savedResponses.slice(0, SAVED_CAP))); }
+
+function renderSavedResponses(sel, items) {
+  const current = sel.value;
+  sel.innerHTML = '<option value="">★ View a saved response…</option>';
+  items.forEach((q, i) => {
+    const oneLine = q.replace(/\s+/g, ' ').trim();
+    const label = oneLine.length > 80 ? oneLine.slice(0, 77) + '…' : oneLine;
+    sel.appendChild(new Option(label, String(i)));
+  });
+  sel.value = current;
+}
+
+function addSavedResponse(text) {
+  if (!text) return;
+  savedResponses = [text, ...savedResponses.filter(t => t !== text)].slice(0, SAVED_CAP);
+  saveSavedResponses();
+  renderSavedResponses(dom.savedSel, savedResponses);
 }
 
 // ---- dataset serializers --------------------------------------------------
@@ -203,6 +232,7 @@ function appendTurn(role, content, meta = '') {
   log.appendChild(turn);
   log.scrollTop = log.scrollHeight;
   return {
+    el: turn,
     update(newRole, newContent, newMeta = '') {
       turn.className = `chat-turn ${newRole}`;
       rEl.textContent = newRole;
@@ -211,6 +241,25 @@ function appendTurn(role, content, meta = '') {
       log.scrollTop = log.scrollHeight;
     },
   };
+}
+
+// Add a "★ Save" button to an assistant turn so its response is kept permanently
+// (survives clearing the chat). Appended to the turn element — not the meta node —
+// so a later update() (which rewrites meta text) won't remove it.
+function attachSaveButton(turnApi, text) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'turn-save';
+  const already = savedResponses.includes(text);
+  btn.textContent = already ? '✓ Saved' : '★ Save';
+  btn.disabled = already;
+  btn.title = 'Save this response — kept even if you clear the chat';
+  btn.addEventListener('click', () => {
+    addSavedResponse(text);
+    btn.textContent = '✓ Saved';
+    btn.disabled = true;
+  });
+  turnApi.el.appendChild(btn);
 }
 
 function appendNotice(text) {
@@ -393,6 +442,7 @@ async function sendChat(question) {
     ].filter(Boolean).join(' ');
     console.log('[chat] usage:', u);
     pending.update('assistant', text || '(empty response)', usageMeta);
+    if (text) attachSaveButton(pending, text);
     recomputeCostPreview();
   } catch (err) {
     pending.update('error', `Request failed: ${err.message}`);
@@ -415,6 +465,8 @@ export function initChat(stateRef) {
     log: document.getElementById('chat-log'),
     historySel: document.getElementById('chat-history'),
     historyClearBtn: document.getElementById('chat-history-clear'),
+    savedSel: document.getElementById('chat-saved'),
+    savedClearBtn: document.getElementById('chat-saved-clear'),
     clearConvBtn: document.getElementById('chat-clear-conversation'),
     costPreview: document.getElementById('cost-preview'),
     dsPayments: document.getElementById('ds-payments'),
@@ -434,6 +486,8 @@ export function initChat(stateRef) {
 
   recentPrompts = loadRecentPrompts();
   renderRecentPrompts(dom.historySel, recentPrompts);
+  savedResponses = loadSavedResponses();
+  renderSavedResponses(dom.savedSel, savedResponses);
 
   // Restore persisted conversation. Re-render each turn into the log.
   messages = loadMessages();
@@ -442,7 +496,10 @@ export function initChat(stateRef) {
     const text = Array.isArray(m.content)
       ? m.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
       : String(m.content);
-    if (text) appendTurn(role, text);
+    if (text) {
+      const turnApi = appendTurn(role, text);
+      if (role === 'assistant') attachSaveButton(turnApi, text);
+    }
   }
 
   const persistKey = () => {
@@ -473,6 +530,21 @@ export function initChat(stateRef) {
     recentPrompts = [];
     saveRecentPrompts(recentPrompts);
     renderRecentPrompts(dom.historySel, recentPrompts);
+  });
+
+  // Picking a saved response re-displays it in the log (it stays in the dropdown).
+  dom.savedSel.addEventListener('change', () => {
+    const i = Number(dom.savedSel.value);
+    if (Number.isFinite(i) && savedResponses[i] !== undefined) {
+      appendTurn('assistant', savedResponses[i], '★ saved response');
+    }
+    dom.savedSel.value = '';
+  });
+  dom.savedClearBtn.addEventListener('click', () => {
+    if (!confirm('Delete all saved responses? This cannot be undone.')) return;
+    savedResponses = [];
+    saveSavedResponses();
+    renderSavedResponses(dom.savedSel, savedResponses);
   });
 
   dom.clearConvBtn.addEventListener('click', () => {
