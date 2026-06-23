@@ -19,9 +19,10 @@ const state = {
   income: [], categories: [], payments: [],
   rendered: {}, tables: {},
   dateRange: computeDateRange('last12mo'),
-  // Global Category / SubCategory filters (header dropdowns). Like dateRange, these
-  // are the single source of truth and apply across every tab + the chat datasets.
-  filters: { category: '', subCategory: '' },
+  // Global Category / SubCategory filters (header multi-selects). Like dateRange,
+  // these are the single source of truth and apply across every tab + the chat
+  // datasets. Each is an array of selected values; empty array means "All".
+  filters: { categories: [], subCategories: [] },
   chatDatasets: { payments: true, categories: false, income: false },
 };
 
@@ -156,15 +157,15 @@ function renderCategoriesTab() {
   const buildFilter = () => {
     const fromM = from.value;
     const toM = to.value;
-    const cat = state.filters.category;
-    const sub = state.filters.subCategory;
+    const cats = state.filters.categories;
+    const subs = state.filters.subCategories;
     return r => {
       if (fromM && r.month < fromM) return false;
       if (toM && r.month > toM) return false;
-      if (cat && r.category !== cat) return false;
+      if (cats.length && !cats.includes(r.category)) return false;
       // SubCategory rows only exist in the payment-derived rows; a category-level
-      // row (subCategory === '') is dropped when a specific subcategory is chosen.
-      if (sub && r.subCategory !== sub) return false;
+      // row (subCategory === '') is dropped when specific subcategories are chosen.
+      if (subs.length && !subs.includes(r.subCategory)) return false;
       return true;
     };
   };
@@ -214,15 +215,15 @@ function renderPaymentsTab() {
   // Local Source + From/To, plus the GLOBAL Category/SubCategory filters.
   const buildFilter = () => {
     const src = srcSel.value;
-    const cat = state.filters.category;
-    const sub = state.filters.subCategory;
+    const cats = state.filters.categories;
+    const subs = state.filters.subCategories;
     const fd = fromDate.value;
     const td = toDate.value;
-    if (!src && !cat && !sub && !fd && !td) return null;
+    if (!src && !cats.length && !subs.length && !fd && !td) return null;
     return r => {
       if (src && r.source !== src) return false;
-      if (cat && r.category !== cat) return false;
-      if (sub && r.subCategory !== sub) return false;
+      if (cats.length && !cats.includes(r.category)) return false;
+      if (subs.length && !subs.includes(r.subCategory)) return false;
       if (fd && r.date < fd) return false;
       if (td && r.date > td) return false;
       return true;
@@ -283,42 +284,113 @@ function onDateRangeChange(preset) {
   invalidateAndRerender(`Date Range changed to ${preset} — subsequent answers reflect the new range.`);
 }
 
+// Compact multi-select: a button that opens a popover of checkboxes. Keeps its own
+// selection Set; calls onChange([...selected]) on every toggle. setOptions() drops
+// any previously-selected value that no longer exists (used for the subcat cascade).
+function createMultiSelect(rootId, { allLabel, onChange }) {
+  const root = document.getElementById(rootId);
+  const toggle = root.querySelector('.ms-toggle');
+  const summary = root.querySelector('.ms-summary');
+  const panel = root.querySelector('.ms-panel');
+  let options = [];
+  let selected = new Set();
+
+  const renderSummary = () => {
+    summary.textContent = selected.size === 0 ? allLabel
+      : selected.size === 1 ? [...selected][0]
+      : `${selected.size} selected`;
+  };
+  const renderPanel = () => {
+    panel.innerHTML = '';
+    if (!options.length) {
+      const e = document.createElement('div');
+      e.className = 'ms-empty'; e.textContent = '(none)';
+      panel.appendChild(e);
+      return;
+    }
+    options.forEach(opt => {
+      const label = document.createElement('label');
+      label.className = 'ms-option';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = selected.has(opt);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(opt); else selected.delete(opt);
+        renderSummary();
+        onChange([...selected]);
+      });
+      label.append(cb, document.createTextNode(' ' + opt));
+      panel.appendChild(label);
+    });
+  };
+
+  toggle.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', (e) => {
+    if (!root.contains(e.target)) { panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); }
+  });
+
+  renderSummary();
+  return {
+    setOptions(values) {
+      options = values;
+      selected = new Set([...selected].filter(s => values.includes(s)));
+      renderSummary();
+      renderPanel();
+    },
+    getSelected() { return [...selected]; },
+  };
+}
+
+let msCategory = null;
+let msSubcategory = null;
+
+function ensureMultiSelects() {
+  if (msCategory) return;
+  msCategory = createMultiSelect('ms-category', { allLabel: 'All', onChange: onGlobalCategoryChange });
+  msSubcategory = createMultiSelect('ms-subcategory', { allLabel: 'All', onChange: onGlobalSubcategoryChange });
+}
+
 // Category options come from categories.csv + payments (minus the 'Total' summary
-// row). Subcategories live only on payments and cascade from the chosen category.
+// row). Subcategories live only on payments and cascade from the chosen categories.
 function populateGlobalFilters() {
-  const catSel = document.getElementById('global-category');
+  ensureMultiSelects();
   const cats = [...new Set([
     ...state.categories.map(r => r.category),
     ...state.payments.map(p => p.category),
   ].filter(c => c && c !== 'Total'))].sort();
-  catSel.innerHTML = '<option value="">All</option>';
-  cats.forEach(c => catSel.appendChild(new Option(c, c)));
-  if (cats.includes(state.filters.category)) catSel.value = state.filters.category;
-  else state.filters.category = '';
+  msCategory.setOptions(cats);
+  state.filters.categories = msCategory.getSelected();
   populateGlobalSubcategories();
 }
 
 function populateGlobalSubcategories() {
-  const subSel = document.getElementById('global-subcategory');
-  const cat = state.filters.category;
-  const pool = cat ? state.payments.filter(p => p.category === cat) : state.payments;
+  const cats = state.filters.categories;
+  const pool = cats.length ? state.payments.filter(p => cats.includes(p.category)) : state.payments;
   const subs = [...new Set(pool.map(p => p.subCategory).filter(Boolean))].sort();
-  subSel.innerHTML = '<option value="">All</option>';
-  subs.forEach(s => subSel.appendChild(new Option(s, s)));
-  if (subs.includes(state.filters.subCategory)) subSel.value = state.filters.subCategory;
-  else state.filters.subCategory = '';
+  msSubcategory.setOptions(subs);
+  state.filters.subCategories = msSubcategory.getSelected();
 }
 
-function onGlobalFilterChange(which) {
-  if (which === 'category') {
-    state.filters.category = document.getElementById('global-category').value;
-    state.filters.subCategory = ''; // reset, then rebuild the cascade
-    populateGlobalSubcategories();
-  } else {
-    state.filters.subCategory = document.getElementById('global-subcategory').value;
-  }
-  const label = `${state.filters.category || 'All categories'} / ${state.filters.subCategory || 'all subcategories'}`;
-  invalidateAndRerender(`Filter changed to ${label} — subsequent answers reflect it.`);
+function filterNotice() {
+  const c = state.filters.categories;
+  const s = state.filters.subCategories;
+  const cLabel = c.length ? c.join(', ') : 'All categories';
+  const sLabel = s.length ? s.join(', ') : 'all subcategories';
+  return `Filter changed to ${cLabel} / ${sLabel} — subsequent answers reflect it.`;
+}
+
+function onGlobalCategoryChange(selected) {
+  state.filters.categories = selected;
+  populateGlobalSubcategories(); // re-cascade; drops sub selections no longer available
+  invalidateAndRerender(filterNotice());
+}
+
+function onGlobalSubcategoryChange(selected) {
+  state.filters.subCategories = selected;
+  invalidateAndRerender(filterNotice());
 }
 
 function wireTabs() {
@@ -337,10 +409,8 @@ function wireTabs() {
     rangeSel.value = state.dateRange.preset;
     rangeSel.addEventListener('change', () => onDateRangeChange(rangeSel.value));
   }
-  const gCat = document.getElementById('global-category');
-  const gSub = document.getElementById('global-subcategory');
-  if (gCat) gCat.addEventListener('change', () => onGlobalFilterChange('category'));
-  if (gSub) gSub.addEventListener('change', () => onGlobalFilterChange('subcategory'));
+  // The global Category / SubCategory multi-selects wire their own change handlers
+  // (createMultiSelect → onChange), set up in populateGlobalFilters/ensureMultiSelects.
 }
 
 async function main(openImport) {

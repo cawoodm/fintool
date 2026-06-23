@@ -1,5 +1,9 @@
 # CHANGELOG
 
+# 23.06.2026 (v0.7.0)
+
+- Global Category / SubCategory header filters are now multi-select (checkbox dropdowns)
+
 # 23.06.2026 (v0.6.0)
 
 - Save individual chat responses (★ Save) — kept permanently in a dropdown, even after the chat is cleared

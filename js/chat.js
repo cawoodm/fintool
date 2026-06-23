@@ -121,7 +121,7 @@ function serializeIncome(income, dateRange) {
 function serializeCategories(categories, dateRange, filters) {
   let rows = filterByMonthIso(categories, dateRange);
   // SubCategory doesn't exist on category-level rows, so only the category filter applies here.
-  if (filters?.category) rows = rows.filter(r => r.category === filters.category);
+  if (filters?.categories?.length) rows = rows.filter(r => filters.categories.includes(r.category));
   return `## categories (${rows.length} category-month rows, CHF)\n` + tsv(rows, [
     'month', 'category', 'expenses', 'pct', 'income', 'reason',
   ]);
@@ -132,8 +132,8 @@ function serializeCategories(categories, dateRange, filters) {
 // which keeps us under the 10K input-TPM limit on consecutive sends.
 function buildPaymentsCsv(payments, dateRange, filters) {
   let filtered = filterByDateString(payments, dateRange);
-  if (filters?.category) filtered = filtered.filter(p => p.category === filters.category);
-  if (filters?.subCategory) filtered = filtered.filter(p => p.subCategory === filters.subCategory);
+  if (filters?.categories?.length) filtered = filtered.filter(p => filters.categories.includes(p.category));
+  if (filters?.subCategories?.length) filtered = filtered.filter(p => filters.subCategories.includes(p.subCategory));
   const groups = new Map();
   for (const p of filtered) {
     const month = (p.date || '').slice(0, 7);
@@ -182,8 +182,10 @@ function buildSystemBlocks() {
   }
   if (parts.length) {
     const f = appState.filters || {};
-    const filterNote = (f.category || f.subCategory)
-      ? `, Filter: ${f.category || 'All'}${f.subCategory ? ' / ' + f.subCategory : ''}`
+    const cats = f.categories || [];
+    const subs = f.subCategories || [];
+    const filterNote = (cats.length || subs.length)
+      ? `, Filter: ${cats.length ? cats.join('+') : 'All'}${subs.length ? ' / ' + subs.join('+') : ''}`
       : '';
     parts.unshift(`# Financial data — Date Range: ${appState.dateRange.start} → ${appState.dateRange.end}${filterNote}`);
     blocks.push({

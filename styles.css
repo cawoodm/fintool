@@ -36,6 +36,22 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
   background: var(--panel); color: var(--text); cursor: pointer;
 }
 
+/* Multi-select (header Category / SubCategory): button + checkbox popover */
+.ms { position: relative; display: inline-flex; }
+.ms-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 90px; justify-content: space-between; }
+.ms-caret { color: var(--muted); font-size: 10px; }
+.ms-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
+  min-width: 180px; max-height: 320px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 6px;
+}
+.ms-panel[hidden] { display: none; }
+.ms-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.ms-option:hover { background: var(--bg); }
+.ms-option input { cursor: pointer; }
+.ms-empty { padding: 6px 8px; color: var(--muted); font-size: 12px; }
+
 main { padding: 18px; max-width: 1600px; margin: 0 auto; }
 .panel { display: none; }
 .panel.active { display: block; }
