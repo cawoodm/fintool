@@ -36,6 +36,14 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
   background: var(--panel); color: var(--text); cursor: pointer;
 }
 
+/* Settings tab */
+.settings-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; max-width: 560px; }
+.settings-section h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.settings-categories { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.setting-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.setting-row input[type="color"] { width: 36px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); cursor: pointer; }
+.setting-row .setting-name { flex: 1; font-size: 14px; }
+
 /* Multi-select (header Category / SubCategory): button + checkbox popover */
 .ms { position: relative; display: inline-flex; }
 .ms-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 90px; justify-content: space-between; }

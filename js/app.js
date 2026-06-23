@@ -1,6 +1,6 @@
 import { loadIncome, loadCategories, loadPayments, formatChf, filterByDateString, filterByMonthIso, NoDataError } from './parsers.js';
 import { renderTable } from './tables.js';
-import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth, lineIncomeExpensesBalance } from './charts.js';
+import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth, lineIncomeExpensesBalance, PALETTE, setCategoryColors } from './charts.js';
 import { initChat, noteContextChange, recomputeCostPreview } from './chat.js';
 import { initImporter, loadDemoData, importFromGithub } from './importer.js';
 import { getItem, setItem } from './storage.js';
@@ -247,6 +247,90 @@ function renderPaymentsTab() {
   toDate.onchange = applyExtra;
 }
 
+// ---- category colors (Settings tab) --------------------------------------
+const CATEGORY_COLORS_KEY = 'category_colors';
+
+function allCategoryNames() {
+  return [...new Set([
+    ...state.categories.map(r => r.category),
+    ...state.payments.map(p => p.category),
+  ].filter(c => c && c !== 'Total'))].sort();
+}
+
+function loadCategoryColorOverrides() {
+  try { return JSON.parse(getItem(CATEGORY_COLORS_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveCategoryColorOverrides(map) { setItem(CATEGORY_COLORS_KEY, JSON.stringify(map)); }
+
+// Resolve every category to a color: a user override if set, else a stable palette
+// color by its position in the sorted category list. Pushed into charts.js so the
+// charts always paint each category the same way.
+function resolveCategoryColors() {
+  const overrides = loadCategoryColorOverrides();
+  const map = {};
+  allCategoryNames().forEach((name, i) => {
+    map[name] = overrides[name] || PALETTE[i % PALETTE.length];
+  });
+  return map;
+}
+function applyCategoryColors() { setCategoryColors(resolveCategoryColors()); }
+
+// Category colors are consumed by the Categories-tab charts; force a redraw next visit.
+function invalidateChartTabs() {
+  delete state.rendered.categories;
+  delete state.rendered.overview;
+}
+
+function renderSettingsTab() {
+  const container = document.getElementById('settings-categories');
+  if (!container) return;
+  const names = allCategoryNames();
+  container.innerHTML = '';
+  if (!names.length) {
+    container.innerHTML = '<p class="muted small">No categories in the loaded data.</p>';
+    return;
+  }
+  const overrides = loadCategoryColorOverrides();
+  names.forEach((name, i) => {
+    const def = PALETTE[i % PALETTE.length];
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = overrides[name] || def;
+    input.setAttribute('aria-label', `Color for ${name}`);
+    input.addEventListener('input', () => {
+      const o = loadCategoryColorOverrides();
+      o[name] = input.value;
+      saveCategoryColorOverrides(o);
+      applyCategoryColors();
+      invalidateChartTabs();
+    });
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'setting-name';
+    nameSpan.textContent = name;
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'btn-ghost-small';
+    reset.textContent = 'Reset';
+    reset.addEventListener('click', () => {
+      const o = loadCategoryColorOverrides();
+      delete o[name];
+      saveCategoryColorOverrides(o);
+      input.value = def;
+      applyCategoryColors();
+      invalidateChartTabs();
+    });
+
+    row.append(input, nameSpan, reset);
+    container.appendChild(row);
+  });
+}
+
 function renderTabContent(name) {
   switch (name) {
     case 'overview': renderOverview(); break;
@@ -254,6 +338,7 @@ function renderTabContent(name) {
     case 'categories': renderCategoriesTab(); break;
     case 'payments': renderPaymentsTab(); break;
     case 'chat': initChat(state); break;
+    case 'settings': renderSettingsTab(); break;
   }
 }
 
@@ -357,11 +442,7 @@ function ensureMultiSelects() {
 // row). Subcategories live only on payments and cascade from the chosen categories.
 function populateGlobalFilters() {
   ensureMultiSelects();
-  const cats = [...new Set([
-    ...state.categories.map(r => r.category),
-    ...state.payments.map(p => p.category),
-  ].filter(c => c && c !== 'Total'))].sort();
-  msCategory.setOptions(cats);
+  msCategory.setOptions(allCategoryNames());
   state.filters.categories = msCategory.getSelected();
   populateGlobalSubcategories();
 }
@@ -422,6 +503,7 @@ async function main(openImport) {
     state.payments = payments.sort((a, b) => a.date.localeCompare(b.date));
     window.__data = state;
     setStatus(`Loaded ${income.length} income, ${categories.length} categories, ${payments.length} payments`);
+    applyCategoryColors();
     populateGlobalFilters();
     wireTabs();
     activateTab(getItem('active_tab') || 'overview');

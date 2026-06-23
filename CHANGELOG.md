@@ -1,5 +1,9 @@
 # CHANGELOG
 
+# 23.06.2026 (v0.8.0)
+
+- Settings tab with a Category colors section — pick a color per category; charts always use it
+
 # 23.06.2026 (v0.7.0)
 
 - Global Category / SubCategory header filters are now multi-select (checkbox dropdowns)

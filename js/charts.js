@@ -1,10 +1,16 @@
 import { formatChf } from './parsers.js';
 
-const PALETTE = [
+export const PALETTE = [
   '#2563eb', '#16a34a', '#dc2626', '#f59e0b', '#7c3aed',
   '#0891b2', '#db2777', '#65a30d', '#9333ea', '#ea580c',
   '#0ea5e9', '#84cc16',
 ];
+
+// User-defined colors keyed by category name (set from Settings via setCategoryColors).
+// keyColor() prefers an explicit color for the label, else falls back to the palette.
+let categoryColors = {};
+export function setCategoryColors(map) { categoryColors = map || {}; }
+function keyColor(key, i) { return categoryColors[key] || PALETTE[i % PALETTE.length]; }
 
 Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 Chart.defaults.font.size = 11;
@@ -98,7 +104,7 @@ export function pieExpensesByCategory(rows, keyField = 'category') {
     type: 'doughnut',
     data: {
       labels: entries.map(e => e[0]),
-      datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((_, i) => PALETTE[i % PALETTE.length]) }],
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((e, i) => keyColor(e[0], i)) }],
     },
     options: {
       responsive: true,
@@ -127,7 +133,7 @@ export function stackedBarCategoriesByMonth(rows, keyField = 'category') {
       datasets: cats.map((cat, i) => ({
         label: cat,
         data: months.map(m => byKey.get(`${m}|${cat}`) || 0),
-        backgroundColor: PALETTE[i % PALETTE.length],
+        backgroundColor: keyColor(cat, i),
       })),
     },
     options: {

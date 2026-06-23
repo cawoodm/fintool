@@ -22,6 +22,7 @@
         <button class="tab" data-tab="categories">Categories</button>
         <button class="tab" data-tab="payments">Payments</button>
         <button class="tab" data-tab="chat">Chat</button>
+        <button class="tab" data-tab="settings">Settings</button>
       </nav>
       <label class="date-range-wrap"
         >Range
@@ -261,6 +262,17 @@
           Key stored locally in your browser. Requests go directly from your
           browser to api.anthropic.com.
         </p>
+      </section>
+
+      <section class="panel" id="tab-settings">
+        <div class="settings-section">
+          <h3>Category colors</h3>
+          <p class="muted small">
+            Pick a color for each category. Charts always use these colors.
+            Stored locally in your browser.
+          </p>
+          <div id="settings-categories" class="settings-categories"></div>
+        </div>
       </section>
     </main>
 
