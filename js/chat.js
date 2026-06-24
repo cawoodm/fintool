@@ -42,7 +42,6 @@ let savedResponses = [];        // explicitly-saved assistant responses (localSt
 let sendInFlight = false;       // serialize chat sends (multi-turn race guard)
 let sendGeneration = 0;         // bumped on any state change; in-flight sends compare
 let dom = {};                   // cached DOM nodes after initChat
-let costDebounceTimer = null;
 let costAbortController = null;
 
 // ---- localStorage helpers -------------------------------------------------
@@ -325,20 +324,27 @@ async function fetchTokenCount(apiKey, payload, signal) {
   return res.json();
 }
 
+// Context changed — just mark the estimate stale. The actual estimate is a
+// count_tokens API call, which we run ONLY on demand (the "Estimate cost" button)
+// to avoid hammering the rate limit on every keystroke / filter change.
 export function recomputeCostPreview() {
-  // Debounced; safe to call from anywhere.
-  if (costDebounceTimer) clearTimeout(costDebounceTimer);
-  costDebounceTimer = setTimeout(() => doRecomputeCostPreview(), 400);
+  if (!dom.costPreview) return;
+  const apiKey = (getItem(KEY_STORAGE) || '').trim();
+  dom.costPreview.classList.remove('estimating');
+  dom.costPreview.textContent = apiKey
+    ? 'Click “Estimate cost” to preview tokens & price.'
+    : 'Set an API key to estimate cost.';
 }
 
-async function doRecomputeCostPreview() {
+// On-demand cost estimate (count_tokens). Triggered by the "Estimate cost" button.
+async function estimateCost() {
   if (!dom.costPreview) return;
   const apiKey = (getItem(KEY_STORAGE) || '').trim();
   const model = dom.modelSelect.value;
   const question = dom.input.value.trim();
 
   if (!apiKey) {
-    dom.costPreview.textContent = 'Set an API key to see cost estimates.';
+    dom.costPreview.textContent = 'Set an API key to estimate cost.';
     return;
   }
   if (!appState) return;
@@ -471,6 +477,7 @@ export function initChat(stateRef) {
     savedClearBtn: document.getElementById('chat-saved-clear'),
     clearConvBtn: document.getElementById('chat-clear-conversation'),
     costPreview: document.getElementById('cost-preview'),
+    costEstimateBtn: document.getElementById('cost-estimate-btn'),
     dsPayments: document.getElementById('ds-payments'),
     dsCategories: document.getElementById('ds-categories'),
     dsIncome: document.getElementById('ds-income'),
@@ -564,6 +571,8 @@ export function initChat(stateRef) {
   dom.dsPayments.addEventListener('change', () => onDatasetToggle('payments'));
   dom.dsCategories.addEventListener('change', () => onDatasetToggle('categories'));
   dom.dsIncome.addEventListener('change', () => onDatasetToggle('income'));
+
+  if (dom.costEstimateBtn) dom.costEstimateBtn.addEventListener('click', () => estimateCost());
 
   dom.input.addEventListener('input', () => recomputeCostPreview());
   dom.input.addEventListener('keydown', e => {

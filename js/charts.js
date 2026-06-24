@@ -6,11 +6,11 @@ export const PALETTE = [
   '#0ea5e9', '#84cc16',
 ];
 
-// User-defined colors keyed by category name (set from Settings via setCategoryColors).
-// keyColor() prefers an explicit color for the label, else falls back to the palette.
-let categoryColors = {};
-export function setCategoryColors(map) { categoryColors = map || {}; }
-function keyColor(key, i) { return categoryColors[key] || PALETTE[i % PALETTE.length]; }
+// Colors keyed by chart label (category OR subcategory name), set from Settings via
+// setChartColors. keyColor() prefers an explicit color for the label, else the palette.
+let keyColors = {};
+export function setChartColors(map) { keyColors = map || {}; }
+function keyColor(key, i) { return keyColors[key] || PALETTE[i % PALETTE.length]; }
 
 Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 Chart.defaults.font.size = 11;

@@ -1,6 +1,6 @@
 import { loadIncome, loadCategories, loadPayments, formatChf, filterByDateString, filterByMonthIso, NoDataError } from './parsers.js';
 import { renderTable } from './tables.js';
-import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth, lineIncomeExpensesBalance, PALETTE, setCategoryColors } from './charts.js';
+import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBarCategoriesByMonth, lineIncomeExpensesBalance, PALETTE, setChartColors } from './charts.js';
 import { initChat, noteContextChange, recomputeCostPreview } from './chat.js';
 import { initImporter, loadDemoData, importFromGithub } from './importer.js';
 import { getItem, setItem } from './storage.js';
@@ -247,8 +247,9 @@ function renderPaymentsTab() {
   toDate.onchange = applyExtra;
 }
 
-// ---- category colors (Settings tab) --------------------------------------
+// ---- chart colors (Settings tab) -----------------------------------------
 const CATEGORY_COLORS_KEY = 'category_colors';
+const SUBCATEGORY_COLORS_KEY = 'subcategory_colors';
 
 function allCategoryNames() {
   return [...new Set([
@@ -256,42 +257,48 @@ function allCategoryNames() {
     ...state.payments.map(p => p.category),
   ].filter(c => c && c !== 'Total'))].sort();
 }
+function allSubcategoryNames() {
+  return [...new Set(state.payments.map(p => p.subCategory).filter(Boolean))].sort();
+}
 
-function loadCategoryColorOverrides() {
-  try { return JSON.parse(getItem(CATEGORY_COLORS_KEY) || '{}'); }
+function loadColorOverrides(key) {
+  try { return JSON.parse(getItem(key) || '{}'); }
   catch { return {}; }
 }
-function saveCategoryColorOverrides(map) { setItem(CATEGORY_COLORS_KEY, JSON.stringify(map)); }
+function saveColorOverrides(key, map) { setItem(key, JSON.stringify(map)); }
 
-// Resolve every category to a color: a user override if set, else a stable palette
-// color by its position in the sorted category list. Pushed into charts.js so the
-// charts always paint each category the same way.
-function resolveCategoryColors() {
-  const overrides = loadCategoryColorOverrides();
+// Resolve a set of names to colors: a user override if set, else a stable palette
+// color by position in the sorted list.
+function resolveColors(names, overrides) {
   const map = {};
-  allCategoryNames().forEach((name, i) => {
-    map[name] = overrides[name] || PALETTE[i % PALETTE.length];
-  });
+  names.forEach((name, i) => { map[name] = overrides[name] || PALETTE[i % PALETTE.length]; });
   return map;
 }
-function applyCategoryColors() { setCategoryColors(resolveCategoryColors()); }
 
-// Category colors are consumed by the Categories-tab charts; force a redraw next visit.
+// Push the merged category + subcategory color map into charts.js so charts always
+// paint each label the same way (category mode uses category names, subcategory mode
+// uses subcategory names — a single by-name map serves both; category wins any clash).
+function applyChartColors() {
+  const cat = resolveColors(allCategoryNames(), loadColorOverrides(CATEGORY_COLORS_KEY));
+  const sub = resolveColors(allSubcategoryNames(), loadColorOverrides(SUBCATEGORY_COLORS_KEY));
+  setChartColors({ ...sub, ...cat });
+}
+
+// Chart colors are consumed by the Categories-tab charts; force a redraw next visit.
 function invalidateChartTabs() {
   delete state.rendered.categories;
   delete state.rendered.overview;
 }
 
-function renderSettingsTab() {
-  const container = document.getElementById('settings-categories');
+// Render one color-picker list (category or subcategory) into a container.
+function renderColorRows(container, names, storageKey) {
   if (!container) return;
-  const names = allCategoryNames();
   container.innerHTML = '';
   if (!names.length) {
-    container.innerHTML = '<p class="muted small">No categories in the loaded data.</p>';
+    container.innerHTML = '<p class="muted small">None in the loaded data.</p>';
     return;
   }
-  const overrides = loadCategoryColorOverrides();
+  const overrides = loadColorOverrides(storageKey);
   names.forEach((name, i) => {
     const def = PALETTE[i % PALETTE.length];
     const row = document.createElement('div');
@@ -302,10 +309,10 @@ function renderSettingsTab() {
     input.value = overrides[name] || def;
     input.setAttribute('aria-label', `Color for ${name}`);
     input.addEventListener('input', () => {
-      const o = loadCategoryColorOverrides();
+      const o = loadColorOverrides(storageKey);
       o[name] = input.value;
-      saveCategoryColorOverrides(o);
-      applyCategoryColors();
+      saveColorOverrides(storageKey, o);
+      applyChartColors();
       invalidateChartTabs();
     });
 
@@ -318,17 +325,22 @@ function renderSettingsTab() {
     reset.className = 'btn-ghost-small';
     reset.textContent = 'Reset';
     reset.addEventListener('click', () => {
-      const o = loadCategoryColorOverrides();
+      const o = loadColorOverrides(storageKey);
       delete o[name];
-      saveCategoryColorOverrides(o);
+      saveColorOverrides(storageKey, o);
       input.value = def;
-      applyCategoryColors();
+      applyChartColors();
       invalidateChartTabs();
     });
 
     row.append(input, nameSpan, reset);
     container.appendChild(row);
   });
+}
+
+function renderSettingsTab() {
+  renderColorRows(document.getElementById('settings-categories'), allCategoryNames(), CATEGORY_COLORS_KEY);
+  renderColorRows(document.getElementById('settings-subcategories'), allSubcategoryNames(), SUBCATEGORY_COLORS_KEY);
 }
 
 function renderTabContent(name) {
@@ -366,6 +378,7 @@ function invalidateAndRerender(notice) {
 
 function onDateRangeChange(preset) {
   state.dateRange = computeDateRange(preset);
+  savePersistedFilters();
   invalidateAndRerender(`Date Range changed to ${preset} — subsequent answers reflect the new range.`);
 }
 
@@ -393,6 +406,19 @@ function createMultiSelect(rootId, { allLabel, onChange }) {
       panel.appendChild(e);
       return;
     }
+    const controls = document.createElement('div');
+    controls.className = 'ms-controls';
+    const mkLink = (text, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'ms-link'; b.textContent = text;
+      b.addEventListener('click', () => { fn(); renderSummary(); renderPanel(); onChange([...selected]); });
+      return b;
+    };
+    controls.append(
+      mkLink('Select all', () => { selected = new Set(options); }),
+      mkLink('Select none', () => { selected = new Set(); }),
+    );
+    panel.appendChild(controls);
     options.forEach(opt => {
       const label = document.createElement('label');
       label.className = 'ms-option';
@@ -425,6 +451,11 @@ function createMultiSelect(rootId, { allLabel, onChange }) {
       renderSummary();
       renderPanel();
     },
+    setSelected(values) {
+      selected = new Set((values || []).filter(v => options.includes(v)));
+      renderSummary();
+      renderPanel();
+    },
     getSelected() { return [...selected]; },
   };
 }
@@ -438,20 +469,41 @@ function ensureMultiSelects() {
   msSubcategory = createMultiSelect('ms-subcategory', { allLabel: 'All', onChange: onGlobalSubcategoryChange });
 }
 
-// Category options come from categories.csv + payments (minus the 'Total' summary
-// row). Subcategories live only on payments and cascade from the chosen categories.
-function populateGlobalFilters() {
-  ensureMultiSelects();
-  msCategory.setOptions(allCategoryNames());
-  state.filters.categories = msCategory.getSelected();
-  populateGlobalSubcategories();
+// Global header filters (Date Range + Category/SubCategory selections) persist across
+// browser refreshes via this localStorage slot.
+const FILTERS_STORAGE = 'global_filters';
+function loadPersistedFilters() {
+  try { return JSON.parse(getItem(FILTERS_STORAGE) || '{}'); }
+  catch { return {}; }
+}
+function savePersistedFilters() {
+  setItem(FILTERS_STORAGE, JSON.stringify({
+    range: state.dateRange.preset,
+    categories: state.filters.categories,
+    subCategories: state.filters.subCategories,
+  }));
 }
 
-function populateGlobalSubcategories() {
+// Category options come from categories.csv + payments (minus the 'Total' summary
+// row). Subcategories live only on payments and cascade from the chosen categories.
+// Selections are restored from the persisted filters on first populate.
+function populateGlobalFilters() {
+  ensureMultiSelects();
+  const persisted = loadPersistedFilters();
+  msCategory.setOptions(allCategoryNames());
+  msCategory.setSelected(persisted.categories || []);
+  state.filters.categories = msCategory.getSelected();
+  populateGlobalSubcategories(persisted.subCategories || []);
+}
+
+// `seed` (optional) restores a persisted subcategory selection on first load. On a
+// category change it's omitted, so the current selection is just pruned to what's valid.
+function populateGlobalSubcategories(seed) {
   const cats = state.filters.categories;
   const pool = cats.length ? state.payments.filter(p => cats.includes(p.category)) : state.payments;
   const subs = [...new Set(pool.map(p => p.subCategory).filter(Boolean))].sort();
   msSubcategory.setOptions(subs);
+  if (seed) msSubcategory.setSelected(seed);
   state.filters.subCategories = msSubcategory.getSelected();
 }
 
@@ -466,11 +518,13 @@ function filterNotice() {
 function onGlobalCategoryChange(selected) {
   state.filters.categories = selected;
   populateGlobalSubcategories(); // re-cascade; drops sub selections no longer available
+  savePersistedFilters();
   invalidateAndRerender(filterNotice());
 }
 
 function onGlobalSubcategoryChange(selected) {
   state.filters.subCategories = selected;
+  savePersistedFilters();
   invalidateAndRerender(filterNotice());
 }
 
@@ -503,7 +557,9 @@ async function main(openImport) {
     state.payments = payments.sort((a, b) => a.date.localeCompare(b.date));
     window.__data = state;
     setStatus(`Loaded ${income.length} income, ${categories.length} categories, ${payments.length} payments`);
-    applyCategoryColors();
+    const persistedRange = loadPersistedFilters().range;
+    if (persistedRange) state.dateRange = computeDateRange(persistedRange);
+    applyChartColors();
     populateGlobalFilters();
     wireTabs();
     activateTab(getItem('active_tab') || 'overview');
@@ -564,16 +620,17 @@ function wireRefreshButton() {
   if (!btn) return;
   if (!getItem('github_url')) return;
   btn.removeAttribute('hidden');
+  const label = btn.querySelector('.btn-label');
   btn.addEventListener('click', async () => {
-    const original = btn.textContent;
+    const original = label.textContent;
     btn.disabled = true;
-    btn.textContent = 'Refreshing…';
+    label.textContent = 'Refreshing…';
     try {
       await importFromGithub({ url: getItem('github_url'), pat: getItem('github_pat') });
     } catch (err) {
       alert(`Couldn't refresh from GitHub: ${err.message}`);
       btn.disabled = false;
-      btn.textContent = original;
+      label.textContent = original;
       return;
     }
     location.reload();

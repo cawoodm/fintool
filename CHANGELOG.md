@@ -1,5 +1,13 @@
 # CHANGELOG
 
+# 24.06.2026 (v0.9.0)
+
+- Global header filters (Date Range, Category, SubCategory) persist across browser refreshes
+- Cost estimate is now manual (a button) instead of automatic — avoids hitting rate limits
+- Skip importing payment lines that have no Amount (e.g. Salary / Transfer balance entries)
+- Settings: pick colors per subcategory too; Settings moved to a top-right cog icon
+- Toolbar buttons use SVG icons (Demo, Import, Refresh, Settings)
+
 # 23.06.2026 (v0.8.0)
 
 - Settings tab with a Category colors section — pick a color per category; charts always use it

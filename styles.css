@@ -25,6 +25,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
 }
 .tab:hover { background: var(--accent-light); color: var(--accent); }
 .tab.active { background: var(--accent); color: white; }
+.tab-icon { display: inline-flex; align-items: center; padding: 6px 9px; }
 .status { color: var(--muted); font-size: 12px; }
 
 .date-range-wrap {
@@ -37,7 +38,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
 }
 
 /* Settings tab */
-.settings-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; max-width: 560px; }
+.settings-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; max-width: 560px; margin-bottom: 16px; }
 .settings-section h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
 .settings-categories { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .setting-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
@@ -55,6 +56,9 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
   box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 6px;
 }
 .ms-panel[hidden] { display: none; }
+.ms-controls { display: flex; gap: 12px; padding: 2px 8px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.ms-link { background: none; border: none; padding: 2px 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+.ms-link:hover { text-decoration: underline; }
 .ms-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
 .ms-option:hover { background: var(--bg); }
 .ms-option input { cursor: pointer; }
@@ -115,6 +119,7 @@ td.pos { color: var(--pos); }
 .chat-datasets input[type="checkbox"] { cursor: pointer; }
 .chat-datasets .btn-ghost-small { margin-left: auto; }
 
+.cost-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 .cost-preview {
   padding: 6px 4px; font-family: var(--mono); font-size: 12px;
   min-height: 1.4em;
@@ -179,9 +184,11 @@ td.pos { color: var(--pos); }
 
 /* Import button (header) */
 .import-btn {
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; border: 1px solid var(--border); background: var(--panel);
   color: var(--text); border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap;
 }
+.btn-icon { flex: 0 0 auto; }
 .import-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Import modal */

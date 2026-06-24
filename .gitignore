@@ -3,8 +3,13 @@ node_modules/
 dist/
 .vite/
 
-# Personal financial data — never commit
+# Personal financial data — never commit (also covers a `data` symlink, not just a dir)
+/data
 data/
+
+# Local scratch (API keys, etc.) — never commit
+/tmp/
+tmp/
 
 # Screenshots show derived figures
 screenshots/

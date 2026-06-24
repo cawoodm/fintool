@@ -200,6 +200,22 @@ describe('loadPayments — examples/payments.csv', () => {
     }
   });
 
+  it('drops rows with no Amount (e.g. Salary / Transfer balance entries)', async () => {
+    const csv = [
+      'Source,Date,Text,Amount,Category,SubCategory,Notes,Balance,Actual',
+      'Bank,01.06.2026,Pay cheque,,Salary,,,12000,',   // no amount → dropped
+      'Bank,02.06.2026,Move money,,Transfer,,,,',        // no amount → dropped
+      'CC,03.06.2026,Coffee,4.50,Food,Eating Out,,,',    // has amount → kept
+      'CC,04.06.2026,Refund,0,Food,Groceries,,,',        // amount 0 → kept
+    ].join('\n');
+    localStorage.setItem('/fintool/payments.csv', csv);
+    const rows = await loadPayments();
+    expect(rows.length).toBe(2);
+    expect(rows.every(r => r.amount !== null)).toBe(true);
+    expect(rows.some(r => r.category === 'Salary')).toBe(false);
+    expect(rows.some(r => r.category === 'Transfer')).toBe(false);
+  });
+
   it('filterByDateString narrows to the given window', async () => {
     const rows = await loadPayments();
     const window = { preset: 'custom', start: '2026-03-01', end: '2026-04-30' };

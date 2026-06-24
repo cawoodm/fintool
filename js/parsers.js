@@ -113,7 +113,9 @@ export async function loadPayments() {
       balance: parseChf(r.Balance),
       actual: parseChf(r.Actual),
     }))
-    .filter((p) => p.date)
+    // Drop rows with a valid date but no Amount (e.g. Salary / Transfer balance
+    // entries) — they aren't real payments. Note: 0 is kept (parseChf('') is null).
+    .filter((p) => p.date && p.amount !== null)
 }
 
 export function filterByDateString(rows, dr, dateField = 'date') {
