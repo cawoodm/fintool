@@ -26,7 +26,13 @@ const state = {
   chatDatasets: { payments: true, categories: false, income: false },
 };
 
-function setStatus(text) { document.getElementById('loadStatus').textContent = text; }
+// The on-screen status caption was removed; keep this as a safe console log so the
+// load/error messages still surface somewhere without throwing on a missing element.
+function setStatus(text) {
+  const el = document.getElementById('loadStatus');
+  if (el) el.textContent = text;
+  else console.log(`[status] ${text}`);
+}
 
 function activateTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -620,17 +626,15 @@ function wireRefreshButton() {
   if (!btn) return;
   if (!getItem('github_url')) return;
   btn.removeAttribute('hidden');
-  const label = btn.querySelector('.btn-label');
   btn.addEventListener('click', async () => {
-    const original = label.textContent;
     btn.disabled = true;
-    label.textContent = 'Refreshing…';
+    btn.classList.add('refreshing'); // spins the icon (see styles.css)
     try {
       await importFromGithub({ url: getItem('github_url'), pat: getItem('github_pat') });
     } catch (err) {
       alert(`Couldn't refresh from GitHub: ${err.message}`);
       btn.disabled = false;
-      label.textContent = original;
+      btn.classList.remove('refreshing');
       return;
     }
     location.reload();

@@ -23,5 +23,6 @@ export default defineConfig({
   plugins: [copyExamples],
   server: {
     host: true, // listen on all addresses so other devices on the LAN can connect
+    allowedHosts: true, // accept any Host header (e.g. *.ngrok-free.app tunnels)
   },
 });

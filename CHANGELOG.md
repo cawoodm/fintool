@@ -1,5 +1,11 @@
 # CHANGELOG
 
+# 24.06.2026 (v0.9.1)
+
+- Toolbar buttons (Demo, Import, Refresh, Settings) are now icon-only
+- Removed the "Loaded …" status caption from the header
+- Dev server accepts tunnelled hosts (allowedHosts) for ngrok previews
+
 # 24.06.2026 (v0.9.0)
 
 - Global header filters (Date Range, Category, SubCategory) persist across browser refreshes
