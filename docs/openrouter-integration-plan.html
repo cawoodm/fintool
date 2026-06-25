@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinTool — OpenRouter Integration Plan</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212b;
+    --ink: #e7eaf0; --muted: #9aa3b2; --line: #2a2f3a;
+    --accent: #6ea8fe; --accent2: #8ce0c0; --warn: #f3c969;
+    --code-bg: #11141a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 48px 24px 96px; }
+  header.title { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 8px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .pill { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 999px;
+          background: var(--panel2); border: 1px solid var(--line); color: var(--muted); margin-right: 6px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-top: 8px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; color: var(--accent2); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+            padding: 20px 24px; margin: 18px 0; }
+  p { margin: 10px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  code { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 13px;
+         background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px;
+        padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; }
+  .decision { background: var(--panel2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+              padding: 6px 14px; margin: 10px 0; font-size: 14px; }
+  .decision b { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  td code { font-size: 12px; }
+  .warn { color: var(--warn); }
+  .tag-new { color: var(--accent2); font-weight: 600; }
+  .tag-edit { color: var(--accent); font-weight: 600; }
+  .muted { color: var(--muted); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px) { .grid2 { grid-template-columns: 1fr; } }
+  .col h3 { margin-top: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="title">
+    <h1>OpenRouter Integration — Design Plan</h1>
+    <div class="sub">FinTool · personal finance web UI · drafted 2026-06-25</div>
+    <div style="margin-top:12px">
+      <span class="pill">Goal: alternative provider</span>
+      <span class="pill">Curated list + free-text</span>
+      <span class="pill">Local heuristic cost</span>
+      <span class="pill">Status: design — not yet built</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>Summary</h2>
+    <p>Add <b>OpenRouter</b> as a second chat provider <em>alongside</em> the existing Anthropic-direct
+    path — the current behavior stays the default and untouched. A new provider abstraction isolates the
+    one genuinely divergent concern (the API wire format) behind a small testable interface, so
+    <code>chat.js</code> stops hardcoding Anthropic specifics.</p>
+    <div class="decision"><b>Confirmed choices:</b> alternative provider (not a replacement) · curated
+    model list + free-text slug override for OpenRouter · local <code>chars/4 × price</code> cost
+    heuristic when OpenRouter is active.</div>
+  </section>
+
+  <section>
+    <h2>1 · Architecture &amp; module boundaries</h2>
+    <p>Introduce <span class="tag-new">new</span> module <code>js/providers.js</code> exporting two
+    provider objects that share one interface:</p>
+<pre><code>provider = {
+  id,                       // 'anthropic' | 'openrouter'
+  label,
+  buildRequest(payload),    // -> { url, headers, body }   translate neutral payload to wire format
+  parseResponse(json),      // -> { text, usage }          normalize response shape
+  estimateInputTokens(payload, apiKey, signal),  // count_tokens (anthropic) | heuristic (openrouter)
+  models,                   // curated [{ id, label, inputPrice, outputPrice }]
+  keyStorageKey,            // 'anthropic_key' | 'openrouter_key'
+}</code></pre>
+    <p><code>chat.js</code> keeps owning conversation state, UI wiring, history, and cost-preview
+    orchestration, but delegates the three provider-specific things through this interface.
+    <code>buildPayload</code> / <code>buildSystemBlocks</code> stay <b>provider-neutral</b> — they already
+    emit a clean <code>{ model, system, messages }</code> shape; each provider translates that into its
+    own wire format inside <code>buildRequest</code>.</p>
+    <p class="muted">Why a separate module: isolates the divergent wire format behind a testable seam,
+    keeps the already-large <code>chat.js</code> from sprawling, matches the repo's small single-purpose
+    module pattern.</p>
+  </section>
+
+  <section>
+    <h2>2 · The two providers' wire formats</h2>
+    <div class="grid2">
+      <div class="col">
+        <h3>Anthropic (unchanged behavior)</h3>
+        <ul>
+          <li><code>POST /v1/messages</code>; headers <code>x-api-key</code>,
+              <code>anthropic-version</code>, <code>anthropic-dangerous-direct-browser-access</code>.</li>
+          <li>Body passes the neutral payload through as-is (already Anthropic-shaped: <code>system</code>
+              blocks with <code>cache_control</code>, <code>content[]</code> messages).</li>
+          <li><b>parse:</b> <code>content[].filter(type==='text')</code> join; usage maps
+              <code>input / cache_creation / cache_read / output</code>.</li>
+          <li><b>estimate:</b> real <code>count_tokens</code> call (accurate).</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>OpenRouter (neutral → OpenAI chat)</h3>
+        <ul>
+          <li><code>POST https://openrouter.ai/api/v1/chat/completions</code>; header
+              <code>Authorization: Bearer &lt;key&gt;</code> (+ optional <code>HTTP-Referer</code> /
+              <code>X-Title</code>). No browser-access header — permissive CORS.</li>
+          <li><b>system</b> blocks → flattened into one <code>{role:'system'}</code> message.</li>
+          <li><b>messages</b> <code>content[]</code> → joined to plain strings, so stored
+              Anthropic-style history converts at send time → switching providers mid-chat works.</li>
+          <li><b>parse:</b> <code>choices[0].message.content</code>; usage maps
+              <code>prompt_tokens→in</code>, <code>completion_tokens→out</code>.</li>
+          <li><b>estimate:</b> <code>chars/4 × model inputPrice</code> heuristic, no API call.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="decision warn"><b>YAGNI — prompt caching dropped for OpenRouter.</b> No
+    <code>cache_control</code> is sent; it's model-dependent there and adds real complexity. The
+    heuristic treats all input as uncached. Cost preview branches: Anthropic keeps the
+    cache-write / cache-read two-number display; OpenRouter shows a single flat estimate.</div>
+  </section>
+
+  <section>
+    <h2>3 · UI, state &amp; key storage</h2>
+    <h3>Provider selector</h3>
+    <p>New <code>&lt;select&gt;</code> in the chat controls (<code>index.html</code>, beside the model
+    select): <em>Anthropic (direct)</em> / <em>OpenRouter</em>. Persisted to new key
+    <code>/fintool/provider</code> via the <code>storage.js</code> wrapper. Default <code>anthropic</code>
+    → existing users see no change.</p>
+
+    <h3>Two API keys, not one</h3>
+    <p>Keep <code>anthropic_key</code>; add <code>openrouter_key</code>. The single
+    <code>#chat-key</code> input rebinds to the active provider — switching the dropdown swaps the input's
+    value and its "✓ key saved locally" state. Each key persists independently.</p>
+
+    <h3>Provider-driven model dropdown</h3>
+    <p>On provider change, repopulate <code>#chat-model</code> from the active provider's curated
+    <code>models</code> and restore that provider's last-used model. OpenRouter additionally gets a
+    <b>free-text slug override</b> (e.g. <code>openai/gpt-5</code>,
+    <code>google/gemini-2.5-pro</code>); non-empty override wins over the dropdown. Hidden when Anthropic
+    is active.</p>
+
+    <h3>Storage keys (generalized)</h3>
+    <table>
+      <tr><th>Key</th><th>Purpose</th></tr>
+      <tr><td><code>provider</code></td><td><span class="tag-new">new</span> active provider id</td></tr>
+      <tr><td><code>anthropic_key</code></td><td>existing — unchanged</td></tr>
+      <tr><td><code>openrouter_key</code></td><td><span class="tag-new">new</span> OpenRouter API key</td></tr>
+      <tr><td><code>anthropic_model</code></td><td>existing — last Anthropic model</td></tr>
+      <tr><td><code>openrouter_model</code></td><td><span class="tag-new">new</span> last OpenRouter dropdown model</td></tr>
+      <tr><td><code>openrouter_model_custom</code></td><td><span class="tag-new">new</span> free-text slug value</td></tr>
+    </table>
+
+    <h3>Switching provider mid-conversation</h3>
+    <p>Reuses the existing <code>noteContextChange()</code> path — drops an italic
+    "Provider changed to X — subsequent answers use {model}" notice, preserves history, invalidates
+    in-flight sends. No new mechanism.</p>
+
+    <h3>Pricing</h3>
+    <p>Today's <code>INPUT_PRICE_PER_1M</code> is Anthropic-only. Each provider carries its own curated
+    prices inline in its <code>models</code> list; the Anthropic provider keeps using the existing
+    constant. A free-text OpenRouter slug has no known price → preview falls back to
+    "tokens only, price unavailable".</p>
+  </section>
+
+  <section>
+    <h2>4 · Testing</h2>
+    <p>Vitest already covers parsers + importer. Add a <span class="tag-new">new</span>
+    <code>providers</code> suite that needs no network:</p>
+    <ul>
+      <li><b>Neutral → Anthropic:</b> <code>buildRequest</code> preserves <code>system</code> blocks,
+          <code>cache_control</code>, and <code>content[]</code> messages; correct URL + headers.</li>
+      <li><b>Neutral → OpenRouter:</b> system blocks flatten to one <code>system</code> message;
+          <code>content[]</code> history converts to string content; bearer header; correct URL.</li>
+      <li><b>parseResponse round-trip:</b> a sample Anthropic <code>content[]</code> response and a sample
+          OpenRouter <code>choices[]</code> response both normalize to the same
+          <code>{ text, usage }</code> shape.</li>
+      <li><b>Heuristic estimate:</b> <code>chars/4 × price</code> math, and the price-unavailable
+          fallback for an unknown slug.</li>
+      <li><b>Provider switch mid-history:</b> a conversation built under Anthropic re-serializes cleanly
+          for an OpenRouter send (the convert-at-send-time guarantee).</li>
+    </ul>
+    <p class="muted">No linter in repo; keep the <code>console.assert</code> row-count guards in
+    <code>app.js:main</code> as-is.</p>
+  </section>
+
+  <section>
+    <h2>5 · File-change list</h2>
+    <table>
+      <tr><th>File</th><th>Change</th></tr>
+      <tr><td><code>js/providers.js</code></td><td><span class="tag-new">NEW</span> — two provider objects + shared interface; curated model lists &amp; prices.</td></tr>
+      <tr><td><code>js/chat.js</code></td><td><span class="tag-edit">EDIT</span> — delegate request build / parse / estimate to active provider; provider + key rebinding; branch cost preview; per-provider model restore.</td></tr>
+      <tr><td><code>index.html</code></td><td><span class="tag-edit">EDIT</span> — provider <code>&lt;select&gt;</code>; free-text slug input (OpenRouter-only); model dropdown becomes dynamic.</td></tr>
+      <tr><td><code>js/storage.js</code></td><td><span class="muted">none</span> — already the single wrapper; new keys flow through it.</td></tr>
+      <tr><td><code>test/providers.test.js</code></td><td><span class="tag-new">NEW</span> — translation + parse + heuristic suite.</td></tr>
+      <tr><td><code>CLAUDE.md</code></td><td><span class="tag-edit">EDIT</span> — document the provider abstraction in the Chat section.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Open questions / deferred (YAGNI)</h2>
+    <ul>
+      <li>Prompt caching for OpenRouter Anthropic models — deliberately deferred.</li>
+      <li>Live <code>/models</code> fetch &amp; live pricing — deferred (curated list chosen).</li>
+      <li>Streaming responses — out of scope; both paths stay single-shot like today.</li>
+      <li>Actual post-send cost via OpenRouter <code>/generation</code> — not used; heuristic chosen.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Next step after sign-off: write the committed spec to
+    <code>docs/superpowers/specs/2026-06-25-openrouter-integration-design.md</code>, then produce an
+    implementation plan. This HTML is a review artifact, not the committed spec.
+  </footer>
+
+</div>
+</body>
+</html>
