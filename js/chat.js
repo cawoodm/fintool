@@ -1,8 +1,9 @@
 import { filterByDateString, filterByMonthIso } from './parsers.js';
 import { getItem, setItem, removeItem } from './storage.js';
+import { getProvider, PROVIDERS } from './providers.js';
 
-const KEY_STORAGE = 'anthropic_key';
-const MODEL_STORAGE = 'anthropic_model';
+const PROVIDER_STORAGE = 'provider';
+const MODEL_CUSTOM_STORAGE = 'openrouter_model_custom';
 const PROMPTS_STORAGE = 'chat_history';
 const MESSAGES_STORAGE = 'chat_messages';
 const SAVED_STORAGE = 'chat_saved_responses';
@@ -36,6 +37,7 @@ try { removeItem(LEGACY_FILE_ID_KEY); } catch { /* ignore */ }
 
 // ---- module state ---------------------------------------------------------
 let appState = null;            // reference to the live app state object
+let provider = getProvider('anthropic');  // active provider; set for real in initChat
 let messages = [];              // conversation history: array of {role, content}
 let recentPrompts = [];         // reusable recent prompts (localStorage)
 let savedResponses = [];        // explicitly-saved assistant responses (localStorage; survive chat clears)
@@ -329,7 +331,7 @@ async function fetchTokenCount(apiKey, payload, signal) {
 // to avoid hammering the rate limit on every keystroke / filter change.
 export function recomputeCostPreview() {
   if (!dom.costPreview) return;
-  const apiKey = (getItem(KEY_STORAGE) || '').trim();
+  const apiKey = (getItem(provider.keyStorageKey) || '').trim();
   dom.costPreview.classList.remove('estimating');
   dom.costPreview.textContent = apiKey
     ? 'Click “Estimate cost” to preview tokens & price.'
@@ -339,7 +341,7 @@ export function recomputeCostPreview() {
 // On-demand cost estimate (count_tokens). Triggered by the "Estimate cost" button.
 async function estimateCost() {
   if (!dom.costPreview) return;
-  const apiKey = (getItem(KEY_STORAGE) || '').trim();
+  const apiKey = (getItem(provider.keyStorageKey) || '').trim();
   const model = dom.modelSelect.value;
   const question = dom.input.value.trim();
 
@@ -391,7 +393,7 @@ async function sendChat(question) {
     appendTurn('error', 'Previous request still in flight — wait for it to finish.');
     return;
   }
-  const apiKey = (getItem(KEY_STORAGE) || dom.keyInput.value || '').trim();
+  const apiKey = (getItem(provider.keyStorageKey) || dom.keyInput.value || '').trim();
   if (!apiKey) {
     appendTurn('error', 'Set an Anthropic API key first.');
     return;
@@ -459,6 +461,38 @@ async function sendChat(question) {
   }
 }
 
+// Read the model the user actually wants to send: the free-text slug wins when present
+// (OpenRouter only), otherwise the dropdown selection.
+function getActiveModel() {
+  if (provider.id === 'openrouter') {
+    const slug = (dom.modelCustom?.value || '').trim();
+    if (slug) return slug;
+  }
+  return dom.modelSelect.value;
+}
+
+// Rebuild the model dropdown from the active provider and restore its last-used model.
+function populateModels() {
+  const last = getItem(provider.modelStorageKey) || '';
+  dom.modelSelect.innerHTML = '';
+  provider.models.forEach(m => dom.modelSelect.appendChild(new Option(m.label, m.id)));
+  if (last && provider.models.some(m => m.id === last)) dom.modelSelect.value = last;
+  // Free-text slug override is OpenRouter-only.
+  const isOR = provider.id === 'openrouter';
+  dom.modelCustomLabel.hidden = !isOR;
+  dom.modelCustom.value = isOR ? (getItem(MODEL_CUSTOM_STORAGE) || '') : '';
+}
+
+// Switch the active provider: swap the API key shown, repopulate models, persist choice.
+function applyProvider(id) {
+  provider = getProvider(id);
+  setItem(PROVIDER_STORAGE, provider.id);
+  const k = getItem(provider.keyStorageKey) || '';
+  dom.keyInput.value = k;
+  dom.stateEl.textContent = k ? '✓ key saved locally' : '';
+  populateModels();
+}
+
 // ---- initChat -------------------------------------------------------------
 export function initChat(stateRef) {
   appState = stateRef;
@@ -481,12 +515,14 @@ export function initChat(stateRef) {
     dsPayments: document.getElementById('ds-payments'),
     dsCategories: document.getElementById('ds-categories'),
     dsIncome: document.getElementById('ds-income'),
+    providerSelect: document.getElementById('chat-provider'),
+    modelCustom: document.getElementById('chat-model-custom'),
+    modelCustomLabel: document.getElementById('chat-model-custom-label'),
   };
 
-  const storedKey = getItem(KEY_STORAGE) || '';
-  const storedModel = getItem(MODEL_STORAGE);
-  if (storedKey) { dom.keyInput.value = storedKey; dom.stateEl.textContent = '✓ key saved locally'; }
-  if (storedModel) dom.modelSelect.value = storedModel;
+  provider = getProvider(getItem(PROVIDER_STORAGE) || 'anthropic');
+  dom.providerSelect.value = provider.id;
+  applyProvider(provider.id);  // populates key field, model dropdown, slug visibility
 
   // Reflect current state into dataset checkboxes (in case state was changed elsewhere).
   dom.dsPayments.checked = appState.chatDatasets.payments;
@@ -513,7 +549,7 @@ export function initChat(stateRef) {
 
   const persistKey = () => {
     const k = dom.keyInput.value.trim();
-    if (k) setItem(KEY_STORAGE, k); else removeItem(KEY_STORAGE);
+    if (k) setItem(provider.keyStorageKey, k); else removeItem(provider.keyStorageKey);
     dom.stateEl.textContent = k ? '✓ key saved locally' : 'key cleared';
     recomputeCostPreview();
   };
@@ -521,7 +557,16 @@ export function initChat(stateRef) {
   dom.saveBtn.addEventListener('click', persistKey);
   dom.keyInput.addEventListener('blur', persistKey);
   dom.modelSelect.addEventListener('change', () => {
-    setItem(MODEL_STORAGE, dom.modelSelect.value);
+    setItem(provider.modelStorageKey, dom.modelSelect.value);
+    recomputeCostPreview();
+  });
+  dom.modelCustom.addEventListener('input', () => {
+    setItem(MODEL_CUSTOM_STORAGE, dom.modelCustom.value.trim());
+    recomputeCostPreview();
+  });
+  dom.providerSelect.addEventListener('change', () => {
+    applyProvider(dom.providerSelect.value);
+    noteContextChange(`Provider changed to ${provider.label} — subsequent answers use ${getActiveModel()}.`);
     recomputeCostPreview();
   });
 
