@@ -270,3 +270,74 @@ td.pos { color: var(--pos); }
 }
 .drop-overlay-title { font-size: 18px; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
 .drop-overlay-hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+/* ============================================================
+   Responsive — tablets and below
+   ============================================================ */
+@media (max-width: 768px) {
+  main { padding: 14px; }
+  .chart-grid { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .import-dialog { padding: 18px; }
+  .drop-zones { grid-template-columns: 1fr; }
+  .gh-pat { flex: 1 1 220px; }
+}
+
+/* ============================================================
+   Responsive — phones (incl. iPhone 15 Pro Max ≈ 430px wide)
+   ============================================================ */
+@media (max-width: 600px) {
+  main { padding: 12px; }
+
+  /* --- Topbar: title + action buttons on row 1, tabs on their own
+         scrollable row, filters wrap below --- */
+  .topbar {
+    gap: 8px 10px;
+    padding: 8px 12px;
+  }
+  .topbar h1 { font-size: 16px; order: 0; margin-right: auto; }
+
+  /* Action buttons stay on the title row, pushed right by h1's auto margin */
+  #btn-demo, #btn-import, #btn-refresh, .tab-icon { order: 1; }
+
+  /* Tabs become a full-width horizontally scrollable strip */
+  .tabs {
+    order: 2;
+    flex: 1 0 100%;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; padding: 7px 12px; }
+
+  /* Filters wrap onto their own rows */
+  .date-range-wrap { order: 3; flex: 1 1 auto; }
+  .date-range { flex: 1; }
+  .ms, .ms-toggle { flex: 1; }
+  /* Keep the multi-select popover inside the viewport */
+  .ms-panel { left: auto; right: 0; max-width: calc(100vw - 24px); }
+
+  /* --- KPI + charts --- */
+  .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .kpi { padding: 12px 14px; }
+  .kpi-value { font-size: 18px; }
+  .chart-card canvas { max-height: 260px; }
+
+  /* --- Toolbars: full-width search, controls wrap --- */
+  .toolbar { gap: 6px; }
+  .toolbar input.global-search { min-width: 0; flex: 1 1 100%; }
+  .toolbar label { flex: 1 1 auto; }
+  .toolbar label select,
+  .toolbar label input { flex: 1; min-width: 0; }
+
+  /* Tables stay horizontally scrollable; give them more vertical room */
+  .table-wrap { max-height: 62vh; }
+
+  /* --- Chat --- */
+  .chat-settings input { min-width: 0; flex: 1 1 100%; }
+  .chat-settings select { flex: 1 1 auto; }
+  .chat-log { height: 46vh; }
+  .chat-turn { max-width: 100%; }
+}
