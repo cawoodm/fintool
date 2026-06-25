@@ -17,6 +17,7 @@
 - **One summary `confirm()`** on import; secret values masked, `github_url` shown in full.
 - **UI icons are inline stroke SVGs, never emoji.** Button reuses existing `.import-btn` + `.btn-icon` pattern.
 - **`decodeConfig` must never throw** — malformed input returns `null`.
+- **Never write empty/blank values into storage.** `decodeConfig` already filters out empty incoming values; the import save loop ALSO skips any falsy value as defense in depth, so an empty value can never overwrite an existing stored value.
 - **Keys:** `github_url`, `github_pat`, `anthropic_key`, `openrouter_key`.
 - **Test command:** `npm test`; single file: `npx vitest run tests/share.test.js`. Tests are network-free and do not depend on `location` (so `buildShareUrl` and the bootstrap are NOT unit-tested — only pure functions are).
 
@@ -84,6 +85,10 @@ describe('encodeConfig / decodeConfig round-trip', () => {
   });
   it('keeps only known SHARE_KEYS, dropping unknown fields', () => {
     const enc = encodeConfig({ github_pat: 'ghp_x', evil: 'nope' });
+    expect(decodeConfig('#cfg=' + enc)).toEqual({ github_pat: 'ghp_x' });
+  });
+  it('drops keys whose value is an empty string (never carries blanks)', () => {
+    const enc = encodeConfig({ github_pat: 'ghp_x', anthropic_key: '' });
     expect(decodeConfig('#cfg=' + enc)).toEqual({ github_pat: 'ghp_x' });
   });
 });
@@ -327,7 +332,9 @@ function importSharedConfig() {
     for (const k of d.overwrite) lines.push(`  ${k}: ${maskValue(k, incoming[k])}`);
   }
   if (!confirm(lines.join('\n'))) return;
-  for (const k of Object.keys(incoming)) setItem(k, incoming[k]);
+  // Never write an empty value into storage (incoming is already filtered by decodeConfig;
+  // this guard makes the invariant explicit so a blank can never overwrite a real value).
+  for (const k of Object.keys(incoming)) if (incoming[k]) setItem(k, incoming[k]);
 }
 
 // Copy a share link (config + keys) to the clipboard. The link carries secrets in its hash.
