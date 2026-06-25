@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinTool — Config Share Link Implementation Plan</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e7eaf0; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --accent2:#8ce0c0; --warn:#f3c969; --code-bg:#11141a; --red:#f0907a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:940px;margin:0 auto;padding:48px 24px 96px;}
+  header.title{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:8px;}
+  h1{font-size:29px;margin:0 0 6px;letter-spacing:-0.01em;}
+  .sub{color:var(--muted);font-size:14px;}
+  .pill{display:inline-block;font-size:12px;padding:2px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);margin:6px 6px 0 0;}
+  h2{font-size:20px;margin:36px 0 12px;}
+  h3{font-size:15px;margin:22px 0 8px;color:var(--accent2);}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:16px 0;}
+  .task{border-left:3px solid var(--accent);}
+  p{margin:10px 0;}
+  ul{margin:8px 0;padding-left:22px;} li{margin:5px 0;}
+  code{font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:12.5px;background:var(--code-bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px;}
+  pre{background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.5;}
+  pre code{background:none;border:none;padding:0;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+  .warn{color:var(--warn);} .red{color:var(--red);}
+  .tag-new{color:var(--accent2);font-weight:600;} .tag-edit{color:var(--accent);font-weight:600;}
+  .step{margin:6px 0;padding-left:26px;position:relative;}
+  .step::before{content:"☐";position:absolute;left:4px;color:var(--muted);}
+  .decision{background:var(--panel2);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:6px 14px;margin:10px 0;font-size:14px;}
+  .secnote{background:rgba(240,144,122,.08);border-left:3px solid var(--red);border-radius:0 8px 8px 0;padding:8px 14px;margin:12px 0;font-size:14px;}
+  footer{margin-top:36px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px;}
+  .muted{color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="title">
+    <h1>Config Share Link — Implementation Plan</h1>
+    <div class="sub">FinTool · topbar + app bootstrap · 2026-06-25 · 3 tasks, TDD</div>
+    <div style="margin-top:10px">
+      <span class="pill">Hash transport (#cfg=)</span>
+      <span class="pill">base64url, no encryption</span>
+      <span class="pill">One masked summary confirm</span>
+      <span class="pill">Hash left in URL</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>Goal &amp; architecture</h2>
+    <p><b>Goal:</b> an SVG-only Share button that encodes the GitHub URL/PAT and LLM API keys into a
+    <code>#cfg=</code> hash link, plus import-on-load that decodes and saves them after one masked
+    summary confirm.</p>
+    <p><b>Architecture:</b> a new pure module <code>js/share.js</code> (encode/decode/diff/mask —
+    network-free, testable like <code>providers.js</code>); <code>js/app.js</code> wires the button
+    click and an import step in the <code>DOMContentLoaded</code> bootstrap; <code>index.html</code>
+    adds the topbar button. No new dependencies.</p>
+    <div class="secnote"><b class="red">Security:</b> the link carries a GitHub PAT and API keys in
+    plaintext-equivalent form. Hash transport (never querystring) keeps secrets out of servers/logs/
+    Referer; the link must still be shared privately. No server component — generating a link transmits
+    nothing.</div>
+  </section>
+
+  <section>
+    <h2>Global constraints</h2>
+    <ul>
+      <li>All persistent values go through <code>js/storage.js</code> (<code>/fintool/</code> prefix) — never <code>localStorage.*</code>.</li>
+      <li>Secrets travel in the URL <b>hash</b> (<code>#cfg=…</code>), never a querystring.</li>
+      <li>Encoding only, <b>no encryption</b> (base64url).</li>
+      <li><b>Leave the hash in the URL</b> after import (no scrubbing); import is a silent no-op when nothing changes.</li>
+      <li>One summary <code>confirm()</code>; secrets masked, <code>github_url</code> shown in full.</li>
+      <li>UI icons are inline stroke SVGs, never emoji; button reuses <code>.import-btn</code> + <code>.btn-icon</code>.</li>
+      <li><code>decodeConfig</code> must never throw — malformed input returns <code>null</code>.</li>
+      <li>Keys: <code>github_url</code>, <code>github_pat</code>, <code>anthropic_key</code>, <code>openrouter_key</code>.</li>
+      <li>Tests network-free; do not depend on <code>location</code> (so <code>buildShareUrl</code> &amp; bootstrap are manual-only).</li>
+    </ul>
+  </section>
+
+  <section class="task">
+    <h2>Task 1 · <span class="tag-new">NEW</span> js/share.js — pure helpers + tests</h2>
+    <p class="muted">Files: create <code>js/share.js</code>, <code>tests/share.test.js</code>. Consumes <code>getItem</code> from storage.js.</p>
+    <h3>Produces</h3>
+<pre><code>SHARE_KEYS = ['github_url','github_pat','anthropic_key','openrouter_key']
+collectConfig()        -> { [key]: string }   // only set, non-empty keys
+encodeConfig(obj)      -> string              // base64url of { v:1, ...obj }
+buildShareUrl(obj)     -> string              // `${origin}${pathname}#cfg=<enc>`
+decodeConfig(hash)     -> { [key]: string } | null   // known keys only; null on malformed
+diffConfig(incoming)   -> { new[], overwrite[], unchanged[] }
+maskValue(key, value)  -> string             // 'ghp_•••1234'; github_url shown in full</code></pre>
+    <h3>Steps (TDD)</h3>
+    <div class="step">Write <code>tests/share.test.js</code> — round-trip, only-set-keys, non-ASCII, unknown-key drop, 6 null-on-malformed cases, diff classification, masking.</div>
+    <div class="step">Run <code>npx vitest run tests/share.test.js</code> → FAIL (module not found).</div>
+    <div class="step">Implement <code>js/share.js</code> (UTF-8-safe base64url; <code>decodeConfig</code> in try/catch returning null).</div>
+    <div class="step">Run focused test → PASS.</div>
+    <div class="step">Run <code>npm test</code> → all suites green.</div>
+    <div class="step">Commit: <code>feat: config share-link encode/decode helpers</code>.</div>
+    <h3>Core implementation</h3>
+<pre><code>function toBase64Url(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin=''; for(const b of bytes) bin+=String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+export function decodeConfig(hash){
+  if(!hash) return null;
+  const raw=String(hash).startsWith('#')?String(hash).slice(1):String(hash);
+  if(!raw.startsWith('cfg=')) return null;
+  try{
+    const obj=JSON.parse(fromBase64Url(raw.slice(4)));
+    if(!obj||obj.v!==1) return null;
+    const out={};
+    for(const k of SHARE_KEYS){ if(typeof obj[k]==='string'&&obj[k]) out[k]=obj[k]; }
+    return Object.keys(out).length?out:null;
+  }catch{ return null; }
+}</code></pre>
+  </section>
+
+  <section class="task">
+    <h2>Task 2 · <span class="tag-edit">EDIT</span> index.html — Share button</h2>
+    <p class="muted">Insert after <code>#btn-refresh</code>, before the settings <code>tab-icon</code> button. Produces <code>#btn-share</code>.</p>
+<pre><code>&lt;button class="import-btn" id="btn-share"
+  title="Copy a share link with your config &amp; keys (contains secrets — share privately)"
+  aria-label="Share config"&gt;
+  &lt;svg class="btn-icon" viewBox="0 0 24 24" width="15" height="15" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true"&gt;
+    &lt;circle cx="18" cy="5" r="3"/&gt;&lt;circle cx="6" cy="12" r="3"/&gt;
+    &lt;circle cx="18" cy="19" r="3"/&gt;
+    &lt;line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/&gt;
+    &lt;line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/&gt;
+  &lt;/svg&gt;
+&lt;/button&gt;</code></pre>
+    <div class="step">Insert markup.</div>
+    <div class="step"><code>grep -n 'btn-share' index.html</code> → one match; no emoji.</div>
+    <div class="step">Commit: <code>feat: share button markup in topbar</code>.</div>
+  </section>
+
+  <section class="task">
+    <h2>Task 3 · <span class="tag-edit">EDIT</span> js/app.js — handler + import-on-load</h2>
+    <p class="muted">Import the share helpers; add two functions; extend the <code>DOMContentLoaded</code> handler.</p>
+<pre><code>function importSharedConfig(){
+  const incoming=decodeConfig(location.hash);
+  if(!incoming) return;
+  const d=diffConfig(incoming);
+  if(!d.new.length &amp;&amp; !d.overwrite.length) return;   // already in sync — don't nag
+  const lines=['Import shared configuration?',''];
+  if(d.new.length){ lines.push('New:'); for(const k of d.new) lines.push(`  ${k}: ${maskValue(k,incoming[k])}`); }
+  if(d.overwrite.length){ lines.push('Overwrite existing:'); for(const k of d.overwrite) lines.push(`  ${k}: ${maskValue(k,incoming[k])}`); }
+  if(!confirm(lines.join('\n'))) return;
+  for(const k of Object.keys(incoming)) setItem(k,incoming[k]);
+}
+
+function wireShareButton(){
+  const btn=document.getElementById('btn-share'); if(!btn) return;
+  btn.addEventListener('click', async ()=>{
+    const cfg=collectConfig();
+    if(!Object.keys(cfg).length){ alert('Nothing to share — no GitHub URL or API keys saved yet.'); return; }
+    const url=buildShareUrl(cfg);
+    try{ await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard.\n\nIt contains your keys in the link — share it privately.');
+    }catch{ prompt('Copy this link (contains your keys — share privately):', url); }
+  });
+}</code></pre>
+    <p>Bootstrap — <code>importSharedConfig()</code> runs <b>first</b> so an imported <code>github_url</code> lets <code>wireRefreshButton</code> reveal the refresh control:</p>
+<pre><code>document.addEventListener('DOMContentLoaded', async ()=>{
+  importSharedConfig();
+  const { open }=initImporter(()=>location.reload());
+  wireDemoButton();
+  wireShareButton();
+  wireRefreshButton();
+  await main(open);
+});</code></pre>
+    <div class="step">Add import line; add both functions; replace bootstrap handler.</div>
+    <div class="step"><code>npm test</code> → green (confirms import resolves, nothing broke).</div>
+    <div class="step">Manual smoke (<code>npm run dev</code>): copy link → open in new tab → masked confirm → save → reload no-op; garbage <code>#cfg=</code> loads normally.</div>
+    <div class="step">Commit: <code>feat: wire share button and import-on-load</code>.</div>
+  </section>
+
+  <section>
+    <h2>File-change list</h2>
+    <table>
+      <tr><th>File</th><th>Change</th></tr>
+      <tr><td><code>js/share.js</code></td><td><span class="tag-new">NEW</span> — pure encode/decode/diff/mask + SHARE_KEYS.</td></tr>
+      <tr><td><code>tests/share.test.js</code></td><td><span class="tag-new">NEW</span> — pure-function suite.</td></tr>
+      <tr><td><code>index.html</code></td><td><span class="tag-edit">EDIT</span> — <code>#btn-share</code> SVG button.</td></tr>
+      <tr><td><code>js/app.js</code></td><td><span class="tag-edit">EDIT</span> — handler + import-on-load + bootstrap.</td></tr>
+      <tr><td><code>styles.css</code></td><td><span class="muted">none</span> — reuses existing topbar button styles.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Deferred (YAGNI)</h2>
+    <ul>
+      <li>Passphrase encryption of the payload.</li>
+      <li>Hash scrubbing after import — explicitly declined; hash stays in the URL.</li>
+      <li>Per-value / conflict-only confirmation — chose one summary confirm.</li>
+      <li>Selective key inclusion UI — all set keys are always included.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Canonical plan: <code>docs/superpowers/plans/2026-06-25-config-share-link.md</code> ·
+    Spec: <code>docs/superpowers/specs/2026-06-25-config-share-link-design.md</code>.
+    This HTML is a review artifact. After approval: execute via subagent-driven development (3 tasks).
+    <br><span class="muted">Note: OpenRouter integration is paused at Task 5/6 and will resume after this feature.</span>
+  </footer>
+
+</div>
+</body>
+</html>
