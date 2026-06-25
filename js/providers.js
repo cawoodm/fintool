@@ -14,6 +14,17 @@ function priceLookup(models, model) {
   return m ? m.inputPrice : null;
 }
 
+const OPENROUTER_MODELS = [
+  { id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', inputPrice: 3.00 },
+  { id: 'openai/gpt-5', label: 'GPT-5', inputPrice: 1.25 },
+  { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', inputPrice: 1.25 },
+];
+
+function toPlainText(content) {
+  if (typeof content === 'string') return content;
+  return (content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+}
+
 // ~chars/4 token estimate over a neutral payload. Used by providers without a
 // count_tokens endpoint (OpenRouter) and exported for unit testing.
 export function heuristicInputTokens(payload) {
@@ -86,7 +97,54 @@ const anthropic = {
   },
 };
 
-export const PROVIDERS = { anthropic };
+const openrouter = {
+  id: 'openrouter',
+  label: 'OpenRouter',
+  keyStorageKey: 'openrouter_key',
+  modelStorageKey: 'openrouter_model',
+  supportsCaching: false,
+  models: OPENROUTER_MODELS,
+  buildRequest(payload, apiKey) {
+    const systemText = (payload.system || []).map(b => b.text).join('\n\n');
+    const messages = [];
+    if (systemText) messages.push({ role: 'system', content: systemText });
+    for (const m of payload.messages || []) {
+      messages.push({ role: m.role, content: toPlainText(m.content) });
+    }
+    return {
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://cawoodm.github.io/fintool/',
+        'X-Title': 'FinTool',
+      },
+      body: { model: payload.model, max_tokens: payload.max_tokens, messages },
+    };
+  },
+  parseResponse(json) {
+    const choice = (json.choices || [])[0] || {};
+    const text = (choice.message && choice.message.content) || '';
+    const u = json.usage || {};
+    return {
+      text,
+      usage: {
+        inputTokens: u.prompt_tokens ?? null,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        outputTokens: u.completion_tokens ?? null,
+      },
+    };
+  },
+  estimateInputTokens(payload /*, apiKey, signal */) {
+    return Promise.resolve({ inputTokens: heuristicInputTokens(payload), heuristic: true });
+  },
+  getInputPrice(model) {
+    return priceLookup(OPENROUTER_MODELS, model);
+  },
+};
+
+export const PROVIDERS = { anthropic, openrouter };
 
 export function getProvider(id) {
   return PROVIDERS[id] || PROVIDERS.anthropic;

@@ -64,3 +64,45 @@ describe('heuristicInputTokens', () => {
     expect(heuristicInputTokens({ system: [], messages: [{ role: 'user', content: 'abcd' }] })).toBe(1);
   });
 });
+
+describe('openrouter provider', () => {
+  const p = PROVIDERS.openrouter;
+
+  it('is resolvable by id', () => {
+    expect(getProvider('openrouter').id).toBe('openrouter');
+  });
+
+  it('buildRequest flattens system blocks into one system message and stringifies content', () => {
+    const { url, headers, body } = p.buildRequest(NEUTRAL_PAYLOAD, 'or-key');
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(headers['authorization']).toBe('Bearer or-key');
+    // one system message (persona + DATA joined), then user + assistant as strings
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'persona\n\nDATA' });
+    expect(body.messages[1]).toEqual({ role: 'user', content: 'hello' });
+    expect(body.messages[2]).toEqual({ role: 'assistant', content: 'hi there' });
+    expect(body.max_tokens).toBe(4096);
+    expect(body.model).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('parseResponse reads choices[0].message.content and maps usage', () => {
+    const json = {
+      choices: [{ message: { role: 'assistant', content: 'answer' } }],
+      usage: { prompt_tokens: 80, completion_tokens: 12 },
+    };
+    expect(p.parseResponse(json)).toEqual({
+      text: 'answer',
+      usage: { inputTokens: 80, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 12 },
+    });
+  });
+
+  it('supportsCaching is false; getInputPrice returns null for unknown slug', () => {
+    expect(p.supportsCaching).toBe(false);
+    expect(p.getInputPrice('definitely/not-a-real-model')).toBeNull();
+  });
+
+  it('estimateInputTokens uses the heuristic and flags it', async () => {
+    const r = await p.estimateInputTokens(NEUTRAL_PAYLOAD, 'or-key', undefined);
+    expect(r.heuristic).toBe(true);
+    expect(r.inputTokens).toBe(heuristicInputTokens(NEUTRAL_PAYLOAD));
+  });
+});
