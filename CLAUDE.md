@@ -28,6 +28,7 @@ Single-page vanilla-JS ES modules served by Vite. `index.html` loads PapaParse, 
 - `js/tables.js` — generic `renderTable(container, rows, columns, opts)` factory returning `{ setGlobal, setExtraFilter, getVisible, refresh }`. 2000-row display cap; numeric column filters accept `>100 / <50 / =0`.
 - `js/charts.js` — Chart.js wrappers. `mount(id, config)` destroys existing chart before creating — charts are replaced, not updated.
 - `js/importer.js` — drag-and-drop modal + window-level overlay. Header signatures in `EXPECTED_HEADERS` must stay in sync with the parsers.
+- `js/providers.js` — provider abstraction for chat. Two providers (`anthropic`, `openrouter`) behind one interface (`buildRequest` / `parseResponse` / `estimateInputTokens` / `getInputPrice`). `chat.js` builds a provider-neutral payload and each provider translates it: Anthropic passes through `/v1/messages` with `cache_control`; OpenRouter flattens to OpenAI `/chat/completions` (no caching). Anthropic estimates via `count_tokens`; OpenRouter via a `chars/4` heuristic. Curated model lists + per-model input prices live here.
 - `js/chat.js` — direct browser → `api.anthropic.com`. Owns conversation state (see Chat section below).
 - `js/storage.js` — thin wrapper around `localStorage` that prefixes every key with `/fintool/`. **Every persistent value must go through this wrapper** — no direct `localStorage.*` calls elsewhere.
 
@@ -50,6 +51,8 @@ Module-level `messages = []` in chat.js, persisted to `/fintool/chat_messages`. 
 `buildSystemBlocks()` constructs a two-block system message: a stable persona, then a single cacheable data block (`cache_control: { type: 'ephemeral' }`) containing whichever of `income / categories / payments` the user checked in `state.chatDatasets`. **Payments is shipped as a monthly aggregate**, grouped by `(Month, Source, Category, SubCategory)` with summed Amount and Count — see `buildPaymentsCsv`. This is critical: raw rows are ~8K tokens, the aggregate is ~2K, which keeps consecutive sends under typical 10K-input-TPM limits.
 
 `buildPayload({ model, pendingQuestion })` is used for both `/v1/messages` sends **and** `/v1/messages/count_tokens` previews. The cost preview path destructures `max_tokens` out before posting (count_tokens rejects it). Pricing table in `INPUT_PRICE_PER_1M` — keep in sync with `shared/models.md` semantics.
+
+The active provider is chosen via the `#chat-provider` dropdown (persisted to `/fintool/provider`, default `anthropic`). Each provider has its own key (`anthropic_key` / `openrouter_key`) and last-model (`anthropic_model` / `openrouter_model`); OpenRouter also supports a free-text model slug (`openrouter_model_custom`) that overrides the dropdown. Prompt caching and the `count_tokens` cost preview are Anthropic-only — OpenRouter uses a local heuristic estimate and never sends `cache_control`.
 
 **Files API is intentionally not used.** `POST /v1/files` does not honor `anthropic-dangerous-direct-browser-access` — preflight is CORS-blocked. The legacy `payments_file_id` key is cleared at chat.js module load.
 

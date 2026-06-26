@@ -105,4 +105,9 @@ describe('openrouter provider', () => {
     expect(r.heuristic).toBe(true);
     expect(r.inputTokens).toBe(heuristicInputTokens(NEUTRAL_PAYLOAD));
   });
+
+  it('includes Owl Alpha with unknown (null) price', () => {
+    expect(p.models.some(m => m.id === 'openrouter/owl-alpha')).toBe(true);
+    expect(p.getInputPrice('openrouter/owl-alpha')).toBeNull();
+  });
 });

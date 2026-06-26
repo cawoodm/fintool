@@ -18,6 +18,7 @@ const OPENROUTER_MODELS = [
   { id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', inputPrice: 3.00 },
   { id: 'openai/gpt-5', label: 'GPT-5', inputPrice: 1.25 },
   { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', inputPrice: 1.25 },
+  { id: 'openrouter/owl-alpha', label: 'Owl Alpha', inputPrice: null },
 ];
 
 function toPlainText(content) {
