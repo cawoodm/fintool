@@ -29,7 +29,7 @@ Single-page vanilla-JS ES modules served by Vite. `index.html` loads PapaParse, 
 - `js/charts.js` — Chart.js wrappers. `mount(id, config)` destroys existing chart before creating — charts are replaced, not updated.
 - `js/importer.js` — drag-and-drop modal + window-level overlay. Header signatures in `EXPECTED_HEADERS` must stay in sync with the parsers.
 - `js/providers.js` — provider abstraction for chat. Two providers (`anthropic`, `openrouter`) behind one interface (`buildRequest` / `parseResponse` / `estimateInputTokens` / `getInputPrice`). `chat.js` builds a provider-neutral payload and each provider translates it: Anthropic passes through `/v1/messages` with `cache_control`; OpenRouter flattens to OpenAI `/chat/completions` (no caching). Anthropic estimates via `count_tokens`; OpenRouter via a `chars/4` heuristic. Curated model lists + per-model input prices live here.
-- `js/chat.js` — direct browser → `api.anthropic.com`. Owns conversation state (see Chat section below).
+- `js/chat.js` — direct browser → the active provider (Anthropic or OpenRouter, via `js/providers.js`). Owns conversation state (see Chat section below).
 - `js/storage.js` — thin wrapper around `localStorage` that prefixes every key with `/fintool/`. **Every persistent value must go through this wrapper** — no direct `localStorage.*` calls elsewhere.
 
 ## Three patterns that cross module boundaries
