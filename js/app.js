@@ -4,6 +4,7 @@ import { lineBankBalance, barIncomeVsExpenses, pieExpensesByCategory, stackedBar
 import { initChat, noteContextChange, recomputeCostPreview } from './chat.js';
 import { initImporter, loadDemoData, importFromGithub } from './importer.js';
 import { getItem, setItem } from './storage.js';
+import { collectConfig, buildShareUrl, decodeConfig, diffConfig, maskValue } from './share.js';
 
 function computeDateRange(preset) {
   if (preset === 'all') return { preset, start: '0000-01-01', end: '9999-12-31' };
@@ -641,9 +642,54 @@ function wireRefreshButton() {
   });
 }
 
+// If the page was opened with a #cfg= share link, decode it and offer to save the values.
+// Leaves the hash in the URL (per design); a silent no-op when nothing would change so a
+// reload does not re-prompt.
+function importSharedConfig() {
+  const incoming = decodeConfig(location.hash);
+  if (!incoming) return;
+  const d = diffConfig(incoming);
+  if (!d.new.length && !d.overwrite.length) return; // already in sync — don't nag
+  const lines = ['Import shared configuration?', ''];
+  if (d.new.length) {
+    lines.push('New:');
+    for (const k of d.new) lines.push(`  ${k}: ${maskValue(k, incoming[k])}`);
+  }
+  if (d.overwrite.length) {
+    lines.push('Overwrite existing:');
+    for (const k of d.overwrite) lines.push(`  ${k}: ${maskValue(k, incoming[k])}`);
+  }
+  if (!confirm(lines.join('\n'))) return;
+  // Never write an empty value into storage (incoming is already filtered by decodeConfig;
+  // this guard makes the invariant explicit so a blank can never overwrite a real value).
+  for (const k of Object.keys(incoming)) if (incoming[k]) setItem(k, incoming[k]);
+}
+
+// Copy a share link (config + keys) to the clipboard. The link carries secrets in its hash.
+function wireShareButton() {
+  const btn = document.getElementById('btn-share');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const cfg = collectConfig();
+    if (!Object.keys(cfg).length) {
+      alert('Nothing to share — no GitHub URL or API keys saved yet.');
+      return;
+    }
+    const url = buildShareUrl(cfg);
+    try {
+      await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard.\n\nIt contains your keys in the link — share it privately.');
+    } catch {
+      prompt('Copy this link (contains your keys — share privately):', url);
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  importSharedConfig();
   const { open } = initImporter(() => location.reload());
   wireDemoButton();
+  wireShareButton();
   wireRefreshButton();
   await main(open);
 });
