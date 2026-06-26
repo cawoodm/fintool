@@ -11,23 +11,12 @@ const LEGACY_FILE_ID_KEY = 'payments_file_id';
 const PROMPTS_CAP = 50;
 const SAVED_CAP = 200;
 
-const API_BASE = 'https://api.anthropic.com/v1';
-const ANTHROPIC_VERSION = '2023-06-01';
 const DEFAULT_MAX_TOKENS = 4096;
 
 // Prompt caching economics
 // Cache write: 1.25× input price (5-min TTL). Cache read: 0.10× input price.
 const CACHE_WRITE_MULT = 1.25;
 const CACHE_READ_MULT = 0.10;
-
-// Per-million-token input prices (USD). Keep in sync with shared/models.md.
-const INPUT_PRICE_PER_1M = {
-  'claude-haiku-4-5-20251001': 1.00,
-  'claude-haiku-4-5': 1.00,
-  'claude-sonnet-4-6': 3.00,
-  'claude-opus-4-7': 5.00,
-  'claude-opus-4-6': 5.00,
-};
 
 const PERSONA = `You are a personal finance analyst. The user is sharing one or more of their financial datasets in CHF (Swiss francs). Answer concisely. Always cite specific numbers from the data when relevant. If a question can't be answered from the provided context, say so explicitly rather than guessing.`;
 
@@ -296,34 +285,11 @@ export function noteContextChange(noticeText) {
 }
 
 // ---- cost preview ---------------------------------------------------------
-function getInputPrice(model) {
-  return INPUT_PRICE_PER_1M[model] ?? 5.00;
-}
-
 function formatUsd(n) {
   if (n < 0.0001) return `<$0.0001`;
   if (n < 0.01) return `$${n.toFixed(4)}`;
   if (n < 1) return `$${n.toFixed(3)}`;
   return `$${n.toFixed(2)}`;
-}
-
-async function fetchTokenCount(apiKey, payload, signal) {
-  const res = await fetch(`${API_BASE}/messages/count_tokens`, {
-    method: 'POST',
-    signal,
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`count_tokens ${res.status}: ${text}`);
-  }
-  return res.json();
 }
 
 // Context changed — just mark the estimate stale. The actual estimate is a
@@ -342,7 +308,7 @@ export function recomputeCostPreview() {
 async function estimateCost() {
   if (!dom.costPreview) return;
   const apiKey = (getItem(provider.keyStorageKey) || '').trim();
-  const model = dom.modelSelect.value;
+  const model = getActiveModel();
   const question = dom.input.value.trim();
 
   if (!apiKey) {
@@ -356,29 +322,33 @@ async function estimateCost() {
 
   dom.costPreview.classList.add('estimating');
   try {
-    const fullPayload = buildPayload({ model, pendingQuestion: question || '(empty)' });
-    // count_tokens rejects max_tokens (only valid on messages.create).
-    const { max_tokens, ...payload } = fullPayload;
-    const result = await fetchTokenCount(apiKey, payload, costAbortController.signal);
-    const totalInput = result.input_tokens;
+    const payload = buildPayload({ model, pendingQuestion: question || '(empty)' });
+    const { inputTokens, heuristic } = await provider.estimateInputTokens(payload, apiKey, costAbortController.signal);
+    const price = provider.getInputPrice(model); // number | null
     const newTokens = Math.max(1, Math.round((question.length || 1) / 4));
-    const cachedTokens = Math.max(0, totalInput - newTokens);
-    const price = getInputPrice(model);
+    const cachedTokens = Math.max(0, inputTokens - newTokens);
 
-    const firstCost = (cachedTokens * CACHE_WRITE_MULT + newTokens) * price / 1_000_000;
-    const followUpCost = (cachedTokens * CACHE_READ_MULT + newTokens) * price / 1_000_000;
+    const tokenStr = `~<span class="cost-num">${inputTokens.toLocaleString()}</span> input tokens`;
+    const suffix = `<span class="muted">(${model}${heuristic ? ', est.' : ''})</span>`;
 
-    const isFirstSend = messages.length === 0;
-    const primaryLabel = isFirstSend ? 'next send' : 'follow-up';
-    const primaryCost = isFirstSend ? firstCost : followUpCost;
-    const otherLabel = isFirstSend ? 'cached follow-ups' : 'if first send';
-    const otherCost = isFirstSend ? followUpCost : firstCost;
-
-    dom.costPreview.innerHTML =
-      `~<span class="cost-num">${totalInput.toLocaleString()}</span> input tokens · ` +
-      `${primaryLabel}: <span class="cost-num">${formatUsd(primaryCost)}</span> · ` +
-      `${otherLabel}: ${formatUsd(otherCost)} ` +
-      `<span class="muted">(${model})</span>`;
+    if (price == null) {
+      dom.costPreview.innerHTML = `${tokenStr} · price unavailable ${suffix}`;
+    } else if (provider.supportsCaching) {
+      const firstCost = (cachedTokens * CACHE_WRITE_MULT + newTokens) * price / 1_000_000;
+      const followUpCost = (cachedTokens * CACHE_READ_MULT + newTokens) * price / 1_000_000;
+      const isFirstSend = messages.length === 0;
+      const primaryLabel = isFirstSend ? 'next send' : 'follow-up';
+      const primaryCost = isFirstSend ? firstCost : followUpCost;
+      const otherLabel = isFirstSend ? 'cached follow-ups' : 'if first send';
+      const otherCost = isFirstSend ? followUpCost : firstCost;
+      dom.costPreview.innerHTML =
+        `${tokenStr} · ${primaryLabel}: <span class="cost-num">${formatUsd(primaryCost)}</span> · ` +
+        `${otherLabel}: ${formatUsd(otherCost)} ${suffix}`;
+    } else {
+      const flatCost = inputTokens * price / 1_000_000;
+      dom.costPreview.innerHTML =
+        `${tokenStr} · est. send: <span class="cost-num">${formatUsd(flatCost)}</span> ${suffix}`;
+    }
   } catch (err) {
     if (err.name === 'AbortError') return;
     dom.costPreview.textContent = `Cost estimate unavailable: ${err.message}`;
@@ -395,12 +365,12 @@ async function sendChat(question) {
   }
   const apiKey = (getItem(provider.keyStorageKey) || dom.keyInput.value || '').trim();
   if (!apiKey) {
-    appendTurn('error', 'Set an Anthropic API key first.');
+    appendTurn('error', `Set a ${provider.label} API key first.`);
     return;
   }
   sendInFlight = true;
   const myGen = sendGeneration;
-  const model = dom.modelSelect.value;
+  const model = getActiveModel();
 
   appendTurn('user', question);
   recentPrompts = [question, ...recentPrompts.filter(q => q !== question)].slice(0, PROMPTS_CAP);
@@ -412,45 +382,41 @@ async function sendChat(question) {
   const payload = buildPayload({ model, pendingQuestion: question });
 
   try {
-    const res = await fetch(`${API_BASE}/messages`, {
+    const { url, headers, body } = provider.buildRequest(payload, apiKey);
+    const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify(payload),
+      headers,
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      pending.update('error', `API error ${res.status}: ${text}`);
+      const errText = await res.text();
+      pending.update('error', `API error ${res.status}: ${errText}`);
       return;
     }
 
     const json = await res.json();
-    const text = (json.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+    const { text, usage } = provider.parseResponse(json);
 
-    // Discard if state changed during the request (Date Range, dataset toggle, clear).
+    // Discard if state changed during the request (Date Range, dataset toggle, provider, clear).
     if (myGen !== sendGeneration) {
       pending.update('assistant', '(response discarded — state changed during request)');
       return;
     }
 
-    // Commit the user message and the assistant response to history.
+    // Commit the user message and the assistant response to history. Store assistant text as a
+    // single Anthropic-style text block so both providers persist a uniform, re-sendable shape.
     messages = payload.messages;
-    messages.push({ role: 'assistant', content: json.content });
+    messages.push({ role: 'assistant', content: [{ type: 'text', text }] });
     saveMessages();
 
-    const u = json.usage || {};
     const usageMeta = [
-      u.input_tokens != null ? `in:${u.input_tokens}` : null,
-      u.cache_creation_input_tokens ? `write:${u.cache_creation_input_tokens}` : null,
-      u.cache_read_input_tokens ? `read:${u.cache_read_input_tokens}` : null,
-      u.output_tokens != null ? `out:${u.output_tokens}` : null,
+      usage.inputTokens != null ? `in:${usage.inputTokens}` : null,
+      usage.cacheWriteTokens ? `write:${usage.cacheWriteTokens}` : null,
+      usage.cacheReadTokens ? `read:${usage.cacheReadTokens}` : null,
+      usage.outputTokens != null ? `out:${usage.outputTokens}` : null,
     ].filter(Boolean).join(' ');
-    console.log('[chat] usage:', u);
+    console.log('[chat] usage:', usage);
     pending.update('assistant', text || '(empty response)', usageMeta);
     if (text) attachSaveButton(pending, text);
     recomputeCostPreview();
@@ -489,6 +455,7 @@ function applyProvider(id) {
   setItem(PROVIDER_STORAGE, provider.id);
   const k = getItem(provider.keyStorageKey) || '';
   dom.keyInput.value = k;
+  dom.keyInput.placeholder = `${provider.label} API Key`;
   dom.stateEl.textContent = k ? '✓ key saved locally' : '';
   populateModels();
 }
