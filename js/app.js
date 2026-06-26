@@ -575,34 +575,14 @@ async function main(openImport) {
     console.assert(payments.length >= 100, 'payments rows look low');
   } catch (e) {
     if (e instanceof NoDataError) {
-      setStatus('No data yet — load demo data or import your own CSVs.');
-      await promptForDemoData(openImport);
+      setStatus('No data yet — import your own CSVs (or click Demo data in the topbar).');
+      if (openImport) openImport();
       return;
     }
     setStatus(`Failed to load data: ${e.message}`);
     console.error(e);
     if (openImport) openImport();
   }
-}
-
-// Called when localStorage has no CSVs. Asks the user once whether to load demo data;
-// if declined, latches the `demo_prompt_seen` flag and falls back to opening the importer.
-async function promptForDemoData(openImport) {
-  if (!getItem('demo_prompt_seen')) {
-    setItem('demo_prompt_seen', '1');
-    if (confirm('No data found. Load six-month demo data so you can try FinTool?\n\nClick Cancel to import your own CSVs instead.')) {
-      try {
-        await loadDemoData();
-      } catch (err) {
-        alert(`Couldn't load demo data: ${err.message}`);
-        if (openImport) openImport();
-        return;
-      }
-      location.reload();
-      return;
-    }
-  }
-  if (openImport) openImport();
 }
 
 function wireDemoButton() {
