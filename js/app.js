@@ -667,6 +667,10 @@ function wireShareButton() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   importSharedConfig();
+  // Editing the address bar to add/replace only the #cfg= fragment is a same-document
+  // navigation: it fires hashchange but NOT DOMContentLoaded, so re-check on hashchange
+  // too. Otherwise pasting a share link into an already-open tab silently does nothing.
+  window.addEventListener('hashchange', importSharedConfig);
   const { open } = initImporter(() => location.reload());
   wireDemoButton();
   wireShareButton();
