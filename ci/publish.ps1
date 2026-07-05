@@ -3,11 +3,18 @@ function main() {
   cd $PSScriptRoot
   cd ..
 
+  $ver = Get-Content .\package.json | ConvertFrom-Json | Select-Object -ExpandProperty version
+
   # Build with the GitHub Pages subpath so asset URLs resolve under /fintool/.
   npx vite build --base=/fintool/ --emptyOutDir
   if ($LASTEXITCODE -ne 0) { throw "vite build failed" }
 
-  $ver = Get-Content .\package.json | ConvertFrom-Json | Select-Object -ExpandProperty version
+  # Stamp the package.json version into the built title tag (replacing any prior "(vX.Y.Z)" suffix).
+  $distIndex = ".\dist\index.html"
+  $indexContent = Get-Content $distIndex -Raw
+  $indexContent = $indexContent -replace '<title>(.*?)(?:\s*\(v[\d.]+\))?</title>', "<title>`$1 (v$ver)</title>"
+  Set-Content -Path $distIndex -Value $indexContent -NoNewline
+
   $targetRel = "../cawoodm.github.io/fintool"
 
   if (-not (Test-Path $targetRel)) {

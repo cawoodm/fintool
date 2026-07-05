@@ -235,9 +235,21 @@ function appendTurn(role, content, meta = '') {
   };
 }
 
+// Buttons below a turn's content (Save, Fullscreen) live in a shared row so they're
+// appended to the turn element — not the meta node — so a later update() (which
+// rewrites meta text) won't remove them.
+function getTurnActions(turnApi) {
+  let actions = turnApi.el.querySelector('.turn-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.className = 'turn-actions';
+    turnApi.el.appendChild(actions);
+  }
+  return actions;
+}
+
 // Add a "★ Save" button to an assistant turn so its response is kept permanently
-// (survives clearing the chat). Appended to the turn element — not the meta node —
-// so a later update() (which rewrites meta text) won't remove it.
+// (survives clearing the chat).
 function attachSaveButton(turnApi, text) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -251,7 +263,61 @@ function attachSaveButton(turnApi, text) {
     btn.textContent = '✓ Saved';
     btn.disabled = true;
   });
-  turnApi.el.appendChild(btn);
+  getTurnActions(turnApi).appendChild(btn);
+}
+
+// Long responses are hard to read in the small chat log on mobile — give them an
+// expand-to-fullscreen affordance for easy, full-viewport scrolling.
+const FULLSCREEN_TEXT_THRESHOLD = 400;
+const EXPAND_ICON_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>';
+const CLOSE_ICON_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+
+let fullscreenDom = null; // lazily-built singleton reader modal
+
+function ensureFullscreenModal() {
+  if (fullscreenDom) return fullscreenDom;
+  const modal = document.createElement('div');
+  modal.className = 'fullscreen-modal';
+  modal.setAttribute('hidden', '');
+  modal.innerHTML = `
+    <div class="fullscreen-header">
+      <h2>Full response</h2>
+      <button type="button" class="fullscreen-close" title="Close" aria-label="Close">${CLOSE_ICON_SVG}</button>
+    </div>
+    <div class="fullscreen-body"></div>
+  `;
+  document.body.appendChild(modal);
+  const body = modal.querySelector('.fullscreen-body');
+  const close = () => modal.setAttribute('hidden', '');
+  modal.querySelector('.fullscreen-close').addEventListener('click', close);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hasAttribute('hidden')) close();
+  });
+  fullscreenDom = { modal, body };
+  return fullscreenDom;
+}
+
+function openFullscreen(text) {
+  const { modal, body } = ensureFullscreenModal();
+  renderContent(body, 'assistant', text);
+  modal.removeAttribute('hidden');
+  body.scrollTop = 0;
+}
+
+// Adds a fullscreen-expand icon to an assistant turn once its text passes
+// FULLSCREEN_TEXT_THRESHOLD — short answers don't need it.
+function attachFullscreenButton(turnApi, text) {
+  if (!text || text.length < FULLSCREEN_TEXT_THRESHOLD) return;
+  const actions = getTurnActions(turnApi);
+  if (actions.querySelector('.turn-fullscreen')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'turn-fullscreen';
+  btn.title = 'Open this response fullscreen for easier reading';
+  btn.setAttribute('aria-label', 'Open this response fullscreen for easier reading');
+  btn.innerHTML = `${EXPAND_ICON_SVG}<span>Fullscreen</span>`;
+  btn.addEventListener('click', () => openFullscreen(text));
+  actions.appendChild(btn);
 }
 
 function appendNotice(text) {
@@ -419,7 +485,10 @@ async function sendChat(question) {
     ].filter(Boolean).join(' ');
     console.log('[chat] usage:', usage);
     pending.update('assistant', text || '(empty response)', usageMeta);
-    if (text) attachSaveButton(pending, text);
+    if (text) {
+      attachSaveButton(pending, text);
+      attachFullscreenButton(pending, text);
+    }
     recomputeCostPreview();
   } catch (err) {
     pending.update('error', `Request failed: ${err.message}`);
@@ -511,7 +580,10 @@ export function initChat(stateRef) {
       : String(m.content);
     if (text) {
       const turnApi = appendTurn(role, text);
-      if (role === 'assistant') attachSaveButton(turnApi, text);
+      if (role === 'assistant') {
+        attachSaveButton(turnApi, text);
+        attachFullscreenButton(turnApi, text);
+      }
     }
   }
 
@@ -558,7 +630,8 @@ export function initChat(stateRef) {
   dom.savedSel.addEventListener('change', () => {
     const i = Number(dom.savedSel.value);
     if (Number.isFinite(i) && savedResponses[i] !== undefined) {
-      appendTurn('assistant', savedResponses[i], '★ saved response');
+      const turnApi = appendTurn('assistant', savedResponses[i], '★ saved response');
+      attachFullscreenButton(turnApi, savedResponses[i]);
     }
     dom.savedSel.value = '';
   });
