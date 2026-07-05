@@ -18,6 +18,7 @@ const OPENROUTER_MODELS = [
   { id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', inputPrice: 3.00 },
   { id: 'openai/gpt-5', label: 'GPT-5', inputPrice: 1.25 },
   { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', inputPrice: 1.25 },
+  { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (fast/cheap)', inputPrice: 0.10 },
   { id: 'openrouter/owl-alpha', label: 'Owl Alpha', inputPrice: null },
 ];
 
@@ -87,6 +88,7 @@ const anthropic = {
         cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
         cacheReadTokens: u.cache_read_input_tokens ?? 0,
         outputTokens: u.output_tokens ?? null,
+        cost: null, // Anthropic /v1/messages does not report a dollar cost.
       },
     };
   },
@@ -120,7 +122,8 @@ const openrouter = {
         'HTTP-Referer': 'https://cawoodm.github.io/fintool/',
         'X-Title': 'FinTool',
       },
-      body: { model: payload.model, max_tokens: payload.max_tokens, messages },
+      // usage.include: true → the response usage object carries the actual credit cost.
+      body: { model: payload.model, max_tokens: payload.max_tokens, messages, usage: { include: true } },
     };
   },
   parseResponse(json) {
@@ -134,6 +137,7 @@ const openrouter = {
         cacheWriteTokens: 0,
         cacheReadTokens: 0,
         outputTokens: u.completion_tokens ?? null,
+        cost: u.cost ?? null, // actual USD credit cost reported by OpenRouter.
       },
     };
   },

@@ -44,7 +44,7 @@ describe('anthropic provider', () => {
     };
     expect(p.parseResponse(json)).toEqual({
       text: 'one\ntwo',
-      usage: { inputTokens: 100, cacheWriteTokens: 20, cacheReadTokens: 5, outputTokens: 30 },
+      usage: { inputTokens: 100, cacheWriteTokens: 20, cacheReadTokens: 5, outputTokens: 30, cost: null },
     });
   });
 
@@ -82,16 +82,17 @@ describe('openrouter provider', () => {
     expect(body.messages[2]).toEqual({ role: 'assistant', content: 'hi there' });
     expect(body.max_tokens).toBe(4096);
     expect(body.model).toBe('claude-haiku-4-5-20251001');
+    expect(body.usage).toEqual({ include: true });
   });
 
   it('parseResponse reads choices[0].message.content and maps usage', () => {
     const json = {
       choices: [{ message: { role: 'assistant', content: 'answer' } }],
-      usage: { prompt_tokens: 80, completion_tokens: 12 },
+      usage: { prompt_tokens: 80, completion_tokens: 12, cost: 0.000285 },
     };
     expect(p.parseResponse(json)).toEqual({
       text: 'answer',
-      usage: { inputTokens: 80, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 12 },
+      usage: { inputTokens: 80, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 12, cost: 0.000285 },
     });
   });
 

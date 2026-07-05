@@ -11,7 +11,7 @@ const LEGACY_FILE_ID_KEY = 'payments_file_id';
 const PROMPTS_CAP = 50;
 const SAVED_CAP = 200;
 
-const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 2048;
 
 // Prompt caching economics
 // Cache write: 1.25× input price (5-min TTL). Cache read: 0.10× input price.
@@ -415,6 +415,7 @@ async function sendChat(question) {
       usage.cacheWriteTokens ? `write:${usage.cacheWriteTokens}` : null,
       usage.cacheReadTokens ? `read:${usage.cacheReadTokens}` : null,
       usage.outputTokens != null ? `out:${usage.outputTokens}` : null,
+      usage.cost != null ? `cost:${formatUsd(usage.cost)}` : null,
     ].filter(Boolean).join(' ');
     console.log('[chat] usage:', usage);
     pending.update('assistant', text || '(empty response)', usageMeta);
