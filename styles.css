@@ -36,6 +36,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); f
   font: inherit; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel); color: var(--text); cursor: pointer;
 }
+input.date-range { width: 130px; cursor: text; }
 
 /* Settings tab */
 .settings-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; max-width: 560px; margin-bottom: 16px; }

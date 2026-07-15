@@ -6,20 +6,39 @@ import { initImporter, loadDemoData, importFromGithub } from './importer.js';
 import { getItem, setItem } from './storage.js';
 import { collectConfig, buildShareUrl, decodeConfig, diffConfig, maskValue } from './share.js';
 
-function computeDateRange(preset) {
-  if (preset === 'all') return { preset, start: '0000-01-01', end: '9999-12-31' };
-  const today = new Date();
-  const end = today.toISOString().slice(0, 10);
-  const start = new Date(today);
-  const months = preset === 'last6mo' ? 6 : preset === 'last24mo' ? 24 : 12;
-  start.setMonth(start.getMonth() - months);
-  return { preset, start: start.toISOString().slice(0, 10), end };
+// fromMonth/toMonth are YYYY-MM strings, either may be '' / null (open-ended).
+// '-31' is a deliberate lexical upper bound: string-compares against any real
+// DD/day-of-month string sort before it, so it behaves as "end of month".
+function computeDateRange(fromMonth, toMonth) {
+  if (!fromMonth && !toMonth) return { preset: 'all', from: '', to: '', start: '0000-01-01', end: '9999-12-31' };
+  return {
+    preset: 'custom',
+    from: fromMonth || '',
+    to: toMonth || '',
+    start: fromMonth ? `${fromMonth}-01` : '0000-01-01',
+    end: toMonth ? `${toMonth}-31` : '9999-12-31',
+  };
 }
+
+// Current month, or `n` months before it, as a YYYY-MM string.
+function monthAgo(n = 0) {
+  const d = new Date();
+  d.setDate(1); // avoid day-of-month overflow when the target month is shorter
+  d.setMonth(d.getMonth() - n);
+  return d.toISOString().slice(0, 7);
+}
+
+// Default range: the last 12 months up to and including the current month.
+function defaultMonthRange() {
+  return { from: monthAgo(11), to: monthAgo(0) };
+}
+
+const defaultRange = defaultMonthRange();
 
 const state = {
   income: [], categories: [], payments: [],
   rendered: {}, tables: {},
-  dateRange: computeDateRange('last12mo'),
+  dateRange: computeDateRange(defaultRange.from, defaultRange.to),
   // Global Category / SubCategory filters (header multi-selects). Like dateRange,
   // these are the single source of truth and apply across every tab + the chat
   // datasets. Each is an array of selected values; empty array means "All".
@@ -383,10 +402,12 @@ function invalidateAndRerender(notice) {
   }
 }
 
-function onDateRangeChange(preset) {
-  state.dateRange = computeDateRange(preset);
+function onDateRangeChange() {
+  const from = document.getElementById('date-from').value;
+  const to = document.getElementById('date-to').value;
+  state.dateRange = computeDateRange(from, to);
   savePersistedFilters();
-  invalidateAndRerender(`Date Range changed to ${preset} — subsequent answers reflect the new range.`);
+  invalidateAndRerender(`Date Range changed to ${from || 'beginning'} → ${to || 'now'} — subsequent answers reflect the new range.`);
 }
 
 // Compact multi-select: a button that opens a popover of checkboxes. Keeps its own
@@ -485,7 +506,8 @@ function loadPersistedFilters() {
 }
 function savePersistedFilters() {
   setItem(FILTERS_STORAGE, JSON.stringify({
-    range: state.dateRange.preset,
+    rangeFrom: state.dateRange.from,
+    rangeTo: state.dateRange.to,
     categories: state.filters.categories,
     subCategories: state.filters.subCategories,
   }));
@@ -546,10 +568,13 @@ function wireTabs() {
       if (t) t.setGlobal(s.value);
     });
   });
-  const rangeSel = document.getElementById('date-range');
-  if (rangeSel) {
-    rangeSel.value = state.dateRange.preset;
-    rangeSel.addEventListener('change', () => onDateRangeChange(rangeSel.value));
+  const fromInput = document.getElementById('date-from');
+  const toInput = document.getElementById('date-to');
+  if (fromInput && toInput) {
+    fromInput.value = state.dateRange.from;
+    toInput.value = state.dateRange.to;
+    fromInput.addEventListener('change', onDateRangeChange);
+    toInput.addEventListener('change', onDateRangeChange);
   }
   // The global Category / SubCategory multi-selects wire their own change handlers
   // (createMultiSelect → onChange), set up in populateGlobalFilters/ensureMultiSelects.
@@ -564,8 +589,16 @@ async function main(openImport) {
     state.payments = payments.sort((a, b) => a.date.localeCompare(b.date));
     window.__data = state;
     setStatus(`Loaded ${income.length} income, ${categories.length} categories, ${payments.length} payments`);
-    const persistedRange = loadPersistedFilters().range;
-    if (persistedRange) state.dateRange = computeDateRange(persistedRange);
+    const persisted = loadPersistedFilters();
+    if ('rangeFrom' in persisted || 'rangeTo' in persisted) {
+      state.dateRange = computeDateRange(persisted.rangeFrom || '', persisted.rangeTo || '');
+    } else if (persisted.range) {
+      // Legacy preset (pre-date-picker): map to an equivalent from/to.
+      const legacyMonthsAgo = { last6mo: 5, last12mo: 11, last24mo: 23 };
+      state.dateRange = persisted.range === 'all'
+        ? computeDateRange('', '')
+        : computeDateRange(monthAgo(legacyMonthsAgo[persisted.range] ?? 11), monthAgo(0));
+    }
     applyChartColors();
     populateGlobalFilters();
     wireTabs();

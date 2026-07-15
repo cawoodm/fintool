@@ -23,37 +23,33 @@
         <button class="tab" data-tab="payments">Payments</button>
         <button class="tab" data-tab="chat">Chat</button>
       </nav>
-      <label class="date-range-wrap"
-        >Range
-        <select id="date-range" class="date-range">
-          <option value="last12mo" selected>Last 12 months</option>
-          <option value="last6mo">Last 6 months</option>
-          <option value="last24mo">Last 24 months</option>
-          <option value="all">All time</option>
-        </select>
+      <label class="date-range-wrap" title="Date range">
+        <input type="month" id="date-from" class="date-range" aria-label="From month" />
+        –
+        <input type="month" id="date-to" class="date-range" aria-label="To month" />
       </label>
-      <span class="date-range-wrap"
-        >Category
+      <span class="date-range-wrap" title="Category">
         <span class="ms" id="ms-category">
           <button
             type="button"
             class="date-range ms-toggle"
             aria-haspopup="true"
             aria-expanded="false"
+            aria-label="Category filter"
           >
             <span class="ms-summary">All</span><span class="ms-caret">▾</span>
           </button>
           <span class="ms-panel" hidden></span>
         </span>
       </span>
-      <span class="date-range-wrap"
-        >SubCategory
+      <span class="date-range-wrap" title="SubCategory">
         <span class="ms" id="ms-subcategory">
           <button
             type="button"
             class="date-range ms-toggle"
             aria-haspopup="true"
             aria-expanded="false"
+            aria-label="SubCategory filter"
           >
             <span class="ms-summary">All</span><span class="ms-caret">▾</span>
           </button>

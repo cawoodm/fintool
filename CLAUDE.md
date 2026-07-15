@@ -36,7 +36,7 @@ Single-page vanilla-JS ES modules served by Vite. `index.html` loads PapaParse, 
 
 ### 1. Global Date Range filter
 
-`state.dateRange = { preset, start, end }` is the single source of truth for what data the user sees. Set via the dropdown in `index.html`'s topbar. Every renderer (`renderOverview`, `renderIncomeTab`, `renderPaymentsTab`, `renderCategoriesTab` defaults, and the chat serializers) reads `state.dateRange` and filters through `filterByDateString` / `filterByMonthIso`. Changing the dropdown invalidates `state.rendered` (keeping `chat` rendered to preserve listeners) and calls `noteContextChange()` in chat.js to drop an inline notice in the chat log.
+`state.dateRange = { preset, from, to, start, end }` is the single source of truth for what data the user sees. Set via the From/To month inputs (`#date-from`/`#date-to`) in `index.html`'s topbar — `preset` is `'custom'` (or `'all'` when both are empty; an empty side is unbounded). Every renderer (`renderOverview`, `renderIncomeTab`, `renderPaymentsTab`, `renderCategoriesTab` defaults, and the chat serializers) reads `state.dateRange` and filters through `filterByDateString` / `filterByMonthIso`. Changing either input invalidates `state.rendered` (keeping `chat` rendered to preserve listeners) and calls `noteContextChange()` in chat.js to drop an inline notice in the chat log.
 
 ### 2. Chat conversation flow
 
