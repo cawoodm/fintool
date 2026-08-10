@@ -1,5 +1,10 @@
 # CHANGELOG
 
+# 10.08.2026 (v0.11.1)
+
+- Chat payments data is no longer grouped by Source — the column is not sent
+- GitHub Action publishes the site to GitHub Pages on every push to main
+
 # 24.06.2026 (v0.9.1)
 
 - Toolbar buttons (Demo, Import, Refresh, Settings) are now icon-only

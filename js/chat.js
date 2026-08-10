@@ -117,7 +117,9 @@ function serializeCategories(categories, dateRange, filters) {
   ]);
 }
 
-// Aggregated payments: group by (Month, Source, Category, SubCategory).
+// Aggregated payments: group by (Month, Category, SubCategory).
+// Source (the paying account) is deliberately omitted — it isn't useful for the
+// chat analysis and dropping it collapses more rows into each group.
 // Sum Amount, count transactions. ~3-4x smaller than the raw per-transaction CSV,
 // which keeps us under the 10K input-TPM limit on consecutive sends.
 function buildPaymentsCsv(payments, dateRange, filters) {
@@ -128,9 +130,9 @@ function buildPaymentsCsv(payments, dateRange, filters) {
   for (const p of filtered) {
     const month = (p.date || '').slice(0, 7);
     if (!month) continue;
-    const key = `${month}|${p.source}|${p.category}|${p.subCategory}`;
+    const key = `${month}|${p.category}|${p.subCategory}`;
     const e = groups.get(key) || {
-      month, source: p.source, category: p.category, subCategory: p.subCategory,
+      month, category: p.category, subCategory: p.subCategory,
       amount: 0, count: 0,
     };
     e.amount += (p.amount || 0);
@@ -139,18 +141,17 @@ function buildPaymentsCsv(payments, dateRange, filters) {
   }
   const rows = [...groups.values()].sort((a, b) =>
     a.month.localeCompare(b.month) ||
-    a.source.localeCompare(b.source) ||
     a.category.localeCompare(b.category) ||
     a.subCategory.localeCompare(b.subCategory)
   );
-  const header = 'Month,Source,Category,SubCategory,Amount,Count';
+  const header = 'Month,Category,SubCategory,Amount,Count';
   const esc = v => {
     if (v === null || v === undefined) return '';
     const s = String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = rows.map(r => [
-    esc(r.month), esc(r.source), esc(r.category), esc(r.subCategory),
+    esc(r.month), esc(r.category), esc(r.subCategory),
     r.amount.toFixed(2), String(r.count),
   ].join(','));
   return { csv: [header, ...lines].join('\n'), rowCount: rows.length };
@@ -168,7 +169,7 @@ function buildSystemBlocks() {
   }
   if (appState.chatDatasets.payments) {
     const { csv, rowCount } = buildPaymentsCsv(appState.payments, appState.dateRange, appState.filters);
-    parts.push(`## payments — monthly aggregate (${rowCount} rows, CSV: Month,Source,Category,SubCategory,Amount,Count)\nAmount is the SUM of all transactions in that month for that (Source, Category, SubCategory) combination. Count is the number of transactions in that group.\n\n${csv}`);
+    parts.push(`## payments — monthly aggregate (${rowCount} rows, CSV: Month,Category,SubCategory,Amount,Count)\nAmount is the SUM of all transactions in that month for that (Category, SubCategory) combination. Count is the number of transactions in that group.\n\n${csv}`);
   }
   if (parts.length) {
     const f = appState.filters || {};

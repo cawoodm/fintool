@@ -48,7 +48,7 @@ Module-level `messages = []` in chat.js, persisted to `/fintool/chat_messages`. 
 
 ### 3. Chat payload assembly
 
-`buildSystemBlocks()` constructs a two-block system message: a stable persona, then a single cacheable data block (`cache_control: { type: 'ephemeral' }`) containing whichever of `income / categories / payments` the user checked in `state.chatDatasets`. **Payments is shipped as a monthly aggregate**, grouped by `(Month, Source, Category, SubCategory)` with summed Amount and Count — see `buildPaymentsCsv`. This is critical: raw rows are ~8K tokens, the aggregate is ~2K, which keeps consecutive sends under typical 10K-input-TPM limits.
+`buildSystemBlocks()` constructs a two-block system message: a stable persona, then a single cacheable data block (`cache_control: { type: 'ephemeral' }`) containing whichever of `income / categories / payments` the user checked in `state.chatDatasets`. **Payments is shipped as a monthly aggregate**, grouped by `(Month, Category, SubCategory)` with summed Amount and Count — see `buildPaymentsCsv`. The `Source` column (paying account) is intentionally not sent. This is critical: raw rows are ~8K tokens, the aggregate is ~2K, which keeps consecutive sends under typical 10K-input-TPM limits.
 
 `buildPayload({ model, pendingQuestion })` is used for both `/v1/messages` sends **and** `/v1/messages/count_tokens` previews. The cost preview path destructures `max_tokens` out before posting (count_tokens rejects it). Pricing table in `INPUT_PRICE_PER_1M` — keep in sync with `shared/models.md` semantics.
 

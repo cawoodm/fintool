@@ -1,0 +1,59 @@
+name: Publish
+
+# Builds the static site and deploys it to GitHub Pages at
+# https://cawoodm.github.io/fintool/ — the same URL ci/publish.ps1 targets,
+# but served straight from this repo instead of the cawoodm.github.io one.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; a queued run supersedes the previous one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # --base=/fintool/ so asset URLs resolve under the project-page subpath.
+      - run: npx vite build --base=/fintool/ --emptyOutDir
+
+      # Stamp the package.json version into the built title tag,
+      # replacing any prior "(vX.Y.Z)" suffix (mirrors ci/publish.ps1).
+      - name: Stamp version into title
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          perl -pi -e "s|<title>(.*?)(?:\s*\(v[\d.]+\))?</title>|<title>\$1 (v$ver)</title>|" dist/index.html
+          grep -o '<title>.*</title>' dist/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
